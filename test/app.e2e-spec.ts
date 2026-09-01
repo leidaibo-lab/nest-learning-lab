@@ -4,8 +4,9 @@ import {
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
 import { AppModule } from './../src/app.module';
+import { Task } from './../src/tasks/task';
 
-describe('AppController (e2e)', () => {
+describe('Application (e2e)', () => {
   let app: NestFastifyApplication;
 
   beforeEach(async () => {
@@ -27,6 +28,50 @@ describe('AppController (e2e)', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.payload).toBe('Hello World!');
+  });
+
+  it('creates and retrieves a task', async () => {
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/tasks',
+      payload: { title: '  Learn NestJS modules  ' },
+    });
+
+    expect(createResponse.statusCode).toBe(201);
+    const created = createResponse.json<Task>();
+    expect(created).toEqual({
+      id: expect.any(String) as string,
+      title: 'Learn NestJS modules',
+      status: 'todo',
+      createdAt: expect.any(String) as string,
+    });
+
+    const getResponse = await app.inject({
+      method: 'GET',
+      url: `/tasks/${created.id}`,
+    });
+
+    expect(getResponse.statusCode).toBe(200);
+    expect(getResponse.json<Task>()).toEqual(created);
+  });
+
+  it('rejects a missing task title', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/tasks',
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('returns 404 for an unknown task', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/tasks/missing',
+    });
+
+    expect(response.statusCode).toBe(404);
   });
 
   afterEach(async () => {

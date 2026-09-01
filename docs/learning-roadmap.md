@@ -10,18 +10,25 @@
 - 应用设计：业务边界、数据一致性、权限、安全和可观测性。
 - 工程质量：规格、测试、提交粒度、持续集成和部署。
 
-## 2. 当前基线
+## 2. 起始基线与当前进度
 
 基线提交：`45d1598 chore(project): initialize Nest learning lab`
 
-当前已经具备：
+起始基线已经具备：
 
 - NestJS 11、TypeScript 严格模式和 Fastify 适配器。
 - 根模块、Controller、Service 及构造器依赖注入示例。
 - Jest 单元测试和基于 Fastify `app.inject()` 的端到端测试骨架。
 - 空的 `test-demo` Controller 和尚未接入请求链路的 DTO。
 
-当前尚未覆盖：业务模块边界、输入校验、持久化、认证授权、横切能力、异步流程和生产部署。
+第一阶段现已完成，并归档为 `openspec/changes/archive/2026-09-01-establish-task-module/`：
+
+- `TasksModule` 已形成独立业务边界，并由 `AppModule` 导入。
+- 任务服务通过自定义 Token 使用 Repository 抽象，当前绑定内存实现。
+- `POST /tasks` 与 `GET /tasks/:id` 已形成可运行的创建、查询链路。
+- Service 单元测试与 Fastify E2E 测试已覆盖成功和关键失败场景。
+
+当前尚未覆盖：标准 DTO 校验与请求生命周期、持久化、认证授权、横切能力、异步流程和生产部署。下一步进入第二阶段 `add-task-validation`。
 
 ## 3. 主线业务模型
 
@@ -76,15 +83,17 @@
 示例：
 
 ```text
-feat(tasks): add task creation endpoint
-feat(validation): validate task creation payload
-test(tasks): cover task creation workflow
-docs(learning): document request lifecycle
+feat(tasks): 新增任务创建接口
+feat(validation): 校验任务创建参数
+test(tasks): 覆盖任务创建流程
+docs(learning): 记录请求生命周期
 ```
 
 ## 8. 近期迭代
 
 ### 迭代一：建立任务模块
+
+状态：已完成，归档变更为 `2026-09-01-establish-task-module`。
 
 - 将 `test-demo` 替换为独立的 `TasksModule`。
 - 建立 Controller、Service、Repository 接口和内存实现。
@@ -94,6 +103,8 @@ docs(learning): document request lifecycle
 建议 OpenSpec 变更名：`establish-task-module`。
 
 ### 迭代二：输入校验与错误契约
+
+状态：下一步。
 
 - 引入 DTO 校验和全局 `ValidationPipe`。
 - 定义任务不存在、参数非法等错误响应。
