@@ -1,3 +1,4 @@
+import { ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   FastifyAdapter,
@@ -16,6 +17,13 @@ describe('Application (e2e)', () => {
 
     app = moduleFixture.createNestApplication<NestFastifyApplication>(
       new FastifyAdapter(),
+    );
+    app.useGlobalPipes(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+      }),
     );
     await app.init();
   });
@@ -63,6 +71,28 @@ describe('Application (e2e)', () => {
     });
 
     expect(response.statusCode).toBe(400);
+  });
+
+  it.each([
+    { title: '   ' },
+    { title: 42 },
+    { title: 'a'.repeat(121) },
+    { title: 'Valid title', unexpected: true },
+  ])('rejects invalid task payload: %p', async (payload) => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/tasks',
+      payload,
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual(
+      expect.objectContaining({
+        statusCode: 400,
+        message: expect.any(Array) as unknown[],
+        error: 'Bad Request',
+      }),
+    );
   });
 
   it('returns 404 for an unknown task', async () => {

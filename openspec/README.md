@@ -44,4 +44,4 @@ openspec archive <change-name>
 - `git diff` 中没有无关改动。
 - 提交信息符合 `type(scope): message`。
 
-当前稳定规格为 `specs/task-management/spec.md`，第一阶段变更已归档到 `changes/archive/2026-09-01-establish-task-module/`。下一项计划变更为 `add-task-validation`，应在开始第二阶段时创建。
+当前稳定规格包括 `specs/task-management/spec.md` 和 `specs/task-validation/spec.md`；第一、二阶段变更分别归档到 `changes/archive/2026-09-01-establish-task-module/` 和 `changes/archive/2026-09-01-add-task-validation/`。下一项计划变更为 `persist-tasks`，应在开始第三阶段时创建。

@@ -28,7 +28,12 @@
 - `POST /tasks` 与 `GET /tasks/:id` 已形成可运行的创建、查询链路。
 - Service 单元测试与 Fastify E2E 测试已覆盖成功和关键失败场景。
 
-当前尚未覆盖：标准 DTO 校验与请求生命周期、持久化、认证授权、横切能力、异步流程和生产部署。下一步进入第二阶段 `add-task-validation`。
+第二阶段现已完成，并归档为 `openspec/changes/archive/2026-09-01-add-task-validation/`：
+
+- `CreateTaskDto` 已具备运行时类型、非空和长度校验。
+- 全局 `ValidationPipe` 已启用转换、白名单和未知字段拒绝。
+- 非法请求会在进入 Controller 前返回标准 HTTP 400 响应。
+- 当前尚未覆盖：持久化、认证授权、横切能力、异步流程和生产部署。下一步进入第三阶段 `persist-tasks`。
 
 ## 3. 主线业务模型
 
@@ -104,7 +109,7 @@ docs(learning): 记录请求生命周期
 
 ### 迭代二：输入校验与错误契约
 
-状态：下一步。
+状态：已完成，归档变更为 `2026-09-01-add-task-validation`。
 
 - 引入 DTO 校验和全局 `ValidationPipe`。
 - 定义任务不存在、参数非法等错误响应。
@@ -113,6 +118,8 @@ docs(learning): 记录请求生命周期
 建议 OpenSpec 变更名：`add-task-validation`。
 
 ### 迭代三：持久化任务
+
+状态：下一步。
 
 - 接入 PostgreSQL，并通过 Repository 隔离基础设施实现。
 - 增加迁移、集成测试和事务场景。

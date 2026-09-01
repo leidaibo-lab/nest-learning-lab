@@ -1,9 +1,4 @@
-import {
-  BadRequestException,
-  Inject,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { CreateTaskDto } from './create-task.dto';
 import { Task } from './task';
@@ -18,15 +13,9 @@ export class TasksService {
   ) {}
 
   async create(input: CreateTaskDto): Promise<Task> {
-    const title = typeof input.title === 'string' ? input.title.trim() : '';
-
-    if (!title) {
-      throw new BadRequestException('任务标题不能为空');
-    }
-
     const task: Task = {
       id: randomUUID(),
-      title,
+      title: input.title.trim(),
       status: 'todo',
       createdAt: new Date().toISOString(),
     };

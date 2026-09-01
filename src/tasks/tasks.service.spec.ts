@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { InMemoryTaskRepository } from './in-memory-task.repository';
 import { TASK_REPOSITORY } from './task.repository';
@@ -31,15 +31,6 @@ describe('TasksService', () => {
       createdAt: expect.any(String) as string,
     });
   });
-
-  it.each([{ title: '' }, { title: '   ' }, {}])(
-    'rejects an invalid title: %p',
-    async (input) => {
-      await expect(service.create(input as { title: string })).rejects.toThrow(
-        BadRequestException,
-      );
-    },
-  );
 
   it('finds a previously created task', async () => {
     const created = await service.create({ title: 'Learn providers' });
