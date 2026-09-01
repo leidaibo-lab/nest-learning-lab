@@ -1,0 +1,25 @@
+schema: spec-driven
+
+context: |
+  项目：nest-learning-lab，一个通过任务管理业务场景系统学习 NestJS 的实验仓库。
+  技术栈：NestJS 11、Fastify 5、TypeScript 严格模式、Jest、pnpm。
+  架构方向：优先模块化单体，通过清晰的 Module、Provider 和 Repository 边界隔离业务与基础设施。
+  测试约定：业务规则使用单元测试，基础设施边界使用集成测试，HTTP 契约使用 Fastify app.inject() 端到端测试。
+  文档语言：中文。规范中的 Requirement 使用 SHALL 或 MUST，Scenario 使用 WHEN/THEN。
+  提交规范：type(scope): message；每个提交只表达一个可独立理解的变更。
+  学习路线：见 docs/learning-roadmap.md。实现新阶段前先建立 OpenSpec change。
+
+rules:
+  proposal:
+    - 使用中文，明确本次业务增量解决的问题及对应的 NestJS 学习目标。
+    - 每个 proposal 聚焦一个可独立验收的纵向能力，并明确 Non-Goals。
+    - Impact 必须列出受影响的模块、HTTP 契约、依赖和测试层级。
+  specs:
+    - 每个 Requirement 必须可测试，每个 Scenario 应能映射到明确的测试用例。
+    - 同时覆盖成功路径、非法输入和关键业务失败路径。
+  design:
+    - 说明模块边界、Provider 依赖关系以及请求生命周期中的落点。
+    - 引入依赖或框架机制时说明选择依据、替代方案和 Fastify 兼容性。
+  tasks:
+    - 任务按依赖顺序拆分，并包含实现、测试、文档与验证步骤。
+    - 单个任务应能在一次工作会话内完成并具有明确验收信号。

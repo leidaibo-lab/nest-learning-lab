@@ -23,7 +23,13 @@
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+基于 NestJS 11 与 Fastify 的后端框架学习实验室。项目通过一个持续演进的任务管理场景，系统学习模块化、依赖注入、请求生命周期、持久化、认证授权、异步处理和生产化实践。
+
+## Learning workflow
+
+- [系统学习路线](docs/learning-roadmap.md)：学习阶段、业务增量、验收标准与近期迭代。
+- [OpenSpec 工作流](openspec/README.md)：以规格驱动每个学习增量的提案、设计、任务和归档。
+- [Agent Skills](.agents/skills/README.md)：存放后续项目级 Skill 的目录约定。
 
 ## Project setup
 
