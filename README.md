@@ -29,7 +29,7 @@
 
 - [系统学习路线](docs/learning-roadmap.md)：学习阶段、业务增量、验收标准与近期迭代。
 - [OpenSpec 工作流](openspec/README.md)：以规格驱动每个学习增量的提案、设计、任务和归档。
-- [Agent Skills](.agents/skills/README.md)：存放后续项目级 Skill 的目录约定。
+- [Agent 工作入口](AGENTS.md)：统一导航项目规则、OpenSpec 变更和后续项目级 Skills。
 
 ## Project setup
 
