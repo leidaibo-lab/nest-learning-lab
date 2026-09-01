@@ -29,7 +29,15 @@ Git 提交必须遵循：
 type(scope): message
 ```
 
-常用类型为 `feat`、`fix`、`test`、`docs`、`refactor` 和 `chore`。一个提交只表达一个可独立理解和验证的变更。
+`type` 和 `scope` 使用英文小写，`message` 使用简洁中文。常用类型为 `feat`、`fix`、`test`、`docs`、`refactor` 和 `chore`。一个提交只表达一个可独立理解和验证的变更。
+
+示例：
+
+```text
+feat(tasks): 新增任务创建接口
+test(tasks): 覆盖任务创建流程
+docs(learning): 记录请求生命周期
+```
 
 ## 项目导航
 

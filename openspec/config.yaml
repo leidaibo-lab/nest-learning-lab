@@ -6,7 +6,7 @@ context: |
   架构方向：优先模块化单体，通过清晰的 Module、Provider 和 Repository 边界隔离业务与基础设施。
   测试约定：业务规则使用单元测试，基础设施边界使用集成测试，HTTP 契约使用 Fastify app.inject() 端到端测试。
   文档语言：中文。规范中的 Requirement 使用 SHALL 或 MUST，Scenario 使用 WHEN/THEN。
-  提交规范：type(scope): message；每个提交只表达一个可独立理解的变更。
+  提交规范：type(scope): message；type 和 scope 使用英文小写，message 使用中文；每个提交只表达一个可独立理解的变更。
   学习路线：见 docs/learning-roadmap.md。实现新阶段前先建立 OpenSpec change。
 
 rules:
