@@ -44,6 +44,7 @@ docs(learning): 记录请求生命周期
 | 内容 | 位置 |
 | --- | --- |
 | 长期学习阶段与近期迭代 | `docs/learning-roadmap.md` |
+| 项目 Prisma 能力组成与使用边界 | `docs/knowledge/prisma-project-capabilities.md` |
 | OpenSpec 项目上下文与工件规则 | `openspec/config.yaml` |
 | OpenSpec 操作流程 | `openspec/README.md` |
 | 当前稳定能力规格 | `openspec/specs/` |

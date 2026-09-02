@@ -4,28 +4,37 @@ import {
   FastifyAdapter,
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
+import { randomUUID } from 'node:crypto';
 import { AppModule } from './../src/app.module';
+import { PrismaService } from './../src/database/prisma.service';
 import { Task } from './../src/tasks/task';
 
 describe('Application (e2e)', () => {
   let app: NestFastifyApplication;
 
-  beforeEach(async () => {
+  async function createApplication(): Promise<NestFastifyApplication> {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication<NestFastifyApplication>(
-      new FastifyAdapter(),
-    );
-    app.useGlobalPipes(
+    const application =
+      moduleFixture.createNestApplication<NestFastifyApplication>(
+        new FastifyAdapter(),
+      );
+    application.useGlobalPipes(
       new ValidationPipe({
         transform: true,
         whitelist: true,
         forbidNonWhitelisted: true,
       }),
     );
-    await app.init();
+    await application.init();
+    return application;
+  }
+
+  beforeEach(async () => {
+    app = await createApplication();
+    await app.get(PrismaService).task.deleteMany();
   });
 
   it('/ (GET)', async () => {
@@ -98,10 +107,30 @@ describe('Application (e2e)', () => {
   it('returns 404 for an unknown task', async () => {
     const response = await app.inject({
       method: 'GET',
-      url: '/tasks/missing',
+      url: `/tasks/${randomUUID()}`,
     });
 
     expect(response.statusCode).toBe(404);
+  });
+
+  it('retrieves a task after recreating the application', async () => {
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/tasks',
+      payload: { title: 'Persist across application instances' },
+    });
+    const created = createResponse.json<Task>();
+
+    await app.close();
+    app = await createApplication();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/tasks/${created.id}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json<Task>()).toEqual(created);
   });
 
   afterEach(async () => {

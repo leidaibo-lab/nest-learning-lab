@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { InMemoryTaskRepository } from './in-memory-task.repository';
+import { PrismaTaskRepository } from './prisma-task.repository';
 import { TASK_REPOSITORY } from './task.repository';
 import { TasksController } from './tasks.controller';
 import { TasksService } from './tasks.service';
@@ -10,7 +10,7 @@ import { TasksService } from './tasks.service';
     TasksService,
     {
       provide: TASK_REPOSITORY,
-      useClass: InMemoryTaskRepository,
+      useClass: PrismaTaskRepository,
     },
   ],
 })

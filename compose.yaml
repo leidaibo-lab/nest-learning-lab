@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: nest_learning_lab
+      POSTGRES_USER: nest
+      POSTGRES_PASSWORD: nest
+    ports:
+      - '127.0.0.1:5433:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U nest -d nest_learning_lab']
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+volumes:
+  postgres-data:

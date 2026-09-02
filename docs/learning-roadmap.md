@@ -33,7 +33,14 @@
 - `CreateTaskDto` 已具备运行时类型、非空和长度校验。
 - 全局 `ValidationPipe` 已启用转换、白名单和未知字段拒绝。
 - 非法请求会在进入 Controller 前返回标准 HTTP 400 响应。
-- 当前尚未覆盖：持久化、认证授权、横切能力、异步流程和生产部署。下一步进入第三阶段 `persist-tasks`。
+
+第三阶段现已完成，并归档为 `openspec/changes/archive/2026-09-01-persist-tasks/`：
+
+- PostgreSQL 17 与 Prisma 6 已提供版本化持久化和初始 migration。
+- ConfigModule 与 DatabaseModule 已集中管理连接配置和 Prisma 生命周期。
+- 生产 Repository Provider 已切换为 Prisma 实现，Controller、Service 和 Repository 接口保持不变。
+- 数据库集成测试和跨应用实例 E2E 已验证任务不会随进程关闭而丢失。
+- 当前尚未覆盖：任务更新事务与并发控制、认证授权、横切能力、异步流程和生产部署。下一增量将先补任务状态更新和事务边界。
 
 ## 3. 主线业务模型
 
@@ -119,7 +126,7 @@ docs(learning): 记录请求生命周期
 
 ### 迭代三：持久化任务
 
-状态：下一步。
+状态：已完成，归档变更为 `2026-09-01-persist-tasks`。
 
 - 接入 PostgreSQL，并通过 Repository 隔离基础设施实现。
 - 增加迁移、集成测试和事务场景。

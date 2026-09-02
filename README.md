@@ -34,8 +34,14 @@
 ## Project setup
 
 ```bash
-$ pnpm install
+pnpm install
+cp .env.example .env
+pnpm db:up
+pnpm prisma:generate
+pnpm prisma:migrate:deploy
 ```
+
+本地 PostgreSQL 通过 Docker Compose 暴露在 `127.0.0.1:5433`。停止容器使用 `pnpm db:down`；该命令保留数据卷。
 
 ## Compile and run the project
 
@@ -55,6 +61,9 @@ $ pnpm run start:prod
 ```bash
 # unit tests
 $ pnpm run test
+
+# PostgreSQL repository integration tests
+$ pnpm run test:integration
 
 # e2e tests
 $ pnpm run test:e2e
