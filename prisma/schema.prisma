@@ -9,10 +9,26 @@ datasource db {
 }
 
 model Task {
-  id        String   @id @db.Uuid
-  title     String   @db.VarChar(120)
-  status    String   @default("todo") @db.VarChar(20)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  id        String      @id @db.Uuid
+  title     String      @db.VarChar(120)
+  status    String      @default("todo") @db.VarChar(20)
+  version   Int         @default(1)
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  events    TaskEvent[]
 
   @@map("tasks")
+}
+
+model TaskEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  taskId     String   @db.Uuid
+  fromStatus String   @map("from_status") @db.VarChar(20)
+  toStatus   String   @map("to_status") @db.VarChar(20)
+  version    Int
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, version])
+  @@index([taskId, createdAt])
+  @@map("task_events")
 }

@@ -1,8 +1,5 @@
-# task-persistence Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change persist-tasks. Update Purpose after archive.
-## Requirements
 ### Requirement: 将任务持久化到 PostgreSQL
 
 系统 MUST 通过 Prisma Repository 将任务及其版本号保存到 PostgreSQL，而不是仅保存在应用进程内存中；成功的状态更新 MUST 在同一数据库事务中保存 Task 和 TaskEvent。
@@ -43,4 +40,3 @@ TBD - created by archiving change persist-tasks. Update Purpose after archive.
 
 - **WHEN** 应用启动时没有提供 `DATABASE_URL`
 - **THEN** 配置校验失败并输出可定位的错误
-

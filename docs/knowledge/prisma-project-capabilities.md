@@ -46,10 +46,21 @@ create / findUnique / findMany / update / delete ...
 
 ```prisma
 model Task {
-  id        String   @id @db.Uuid
-  title     String   @db.VarChar(120)
-  status    String   @default("todo") @db.VarChar(20)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  id        String      @id @db.Uuid
+  title     String      @db.VarChar(120)
+  status    String      @default("todo") @db.VarChar(20)
+  version   Int         @default(1)
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  events    TaskEvent[]
+}
+
+model TaskEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  taskId     String   @db.Uuid
+  fromStatus String   @map("from_status") @db.VarChar(20)
+  toStatus   String   @map("to_status") @db.VarChar(20)
+  version    Int
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 }
 ```
 
@@ -107,7 +118,7 @@ await prisma.$executeRaw`UPDATE tasks SET status = 'done'`;
 prisma.$on('query', (event) => console.log(event.duration));
 ```
 
-当前项目使用了 `$connect` 和 `$disconnect`；任务状态更新和操作事件出现后，再引入 `$transaction`。原生 SQL 只在 Prisma API 无法清晰表达时使用，变量必须采用参数化模板。
+当前项目使用了 `$connect`、`$disconnect` 和 `$transaction`；任务状态更新时，Task 与 TaskEvent 在同一个事务中提交。原生 SQL 只在 Prisma API 无法清晰表达时使用，变量必须采用参数化模板。
 
 ## 6. 本项目的 Repository 边界
 
@@ -117,7 +128,13 @@ prisma.$on('query', (event) => console.log(event.duration));
 export interface TaskRepository {
   save(task: Task): Promise<Task>;
   findById(id: string): Promise<Task | undefined>;
+  updateStatus(id: string, status: TaskStatus, expectedVersion: number): Promise<TaskUpdateResult>;
 }
+
+type TaskUpdateResult =
+  | { kind: 'updated'; task: Task }
+  | { kind: 'not_found' }
+  | { kind: 'conflict' };
 ```
 
 基础设施层才调用：
@@ -130,7 +147,7 @@ await this.prisma.task.findUnique({ where: { id } });
 这样做的目的：
 
 - Controller 和 Service 不知道 Prisma 的存在。
-- 单元测试可以注入 `InMemoryTaskRepository`，不启动数据库。
+- 单元测试可以注入 mock 或 fake Repository，不启动数据库。
 - 集成测试验证 `PrismaTaskRepository` 与 PostgreSQL 的真实行为。
 - 未来替换 ORM 或数据库时，影响集中在 Repository 和基础设施模块。
 
@@ -150,6 +167,17 @@ task.createdAt.toISOString()
 
 `PrismaTaskRepository` 是映射边界，不能把 Prisma 的 `Date` 类型直接泄漏到领域层。
 
+状态更新使用乐观并发控制：
+
+```ts
+await transaction.task.updateMany({
+  where: { id, version: expectedVersion },
+  data: { status, version: { increment: 1 } },
+});
+```
+
+`id + version` 是一次 CAS（Compare-And-Swap）条件。条件更新的受影响行数为 0 时，表示任务不存在、版本已过期或并发请求已经先完成。状态更新成功后，再在同一个 `$transaction` 中创建 `TaskEvent`；事件写入失败会回滚任务状态。
+
 ## 8. 常用命令
 
 ```bash
@@ -164,7 +192,7 @@ pnpm test:integration      # 测试真实 Prisma Repository
 
 ```text
 TasksService 单元测试
-  → InMemoryTaskRepository
+  → mock/fake TaskRepository
   → 快速验证业务规则
 
 PrismaTaskRepository 集成测试

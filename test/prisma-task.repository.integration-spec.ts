@@ -39,6 +39,7 @@ describe('PrismaTaskRepository (integration)', () => {
       id: randomUUID(),
       title: 'Learn Prisma repository',
       status: 'todo',
+      version: 1,
       createdAt: new Date().toISOString(),
     };
 
@@ -48,6 +49,73 @@ describe('PrismaTaskRepository (integration)', () => {
 
   it('returns undefined for an unknown task', async () => {
     await expect(repository.findById(randomUUID())).resolves.toBeUndefined();
+  });
+
+  it('updates a task and creates an event in one transaction', async () => {
+    const task: Task = {
+      id: randomUUID(),
+      title: 'Learn transactions',
+      status: 'todo',
+      version: 1,
+      createdAt: new Date().toISOString(),
+    };
+    await repository.save(task);
+
+    const result = await repository.updateStatus(task.id, 'in_progress', 1);
+
+    expect(result).toMatchObject({
+      kind: 'updated',
+      task: { id: task.id, status: 'in_progress', version: 2 },
+    });
+    await expect(
+      prisma.taskEvent.count({ where: { taskId: task.id } }),
+    ).resolves.toBe(1);
+  });
+
+  it('returns a conflict without changing the task or adding an event', async () => {
+    const task: Task = {
+      id: randomUUID(),
+      title: 'Learn compare and swap',
+      status: 'todo',
+      version: 1,
+      createdAt: new Date().toISOString(),
+    };
+    await repository.save(task);
+
+    await expect(repository.updateStatus(task.id, 'done', 2)).resolves.toEqual({
+      kind: 'conflict',
+    });
+    await expect(repository.findById(task.id)).resolves.toEqual(task);
+    await expect(
+      prisma.taskEvent.count({ where: { taskId: task.id } }),
+    ).resolves.toBe(0);
+  });
+
+  it('rolls back the task when event creation fails', async () => {
+    const task: Task = {
+      id: randomUUID(),
+      title: 'Learn atomic transactions',
+      status: 'todo',
+      version: 1,
+      createdAt: new Date().toISOString(),
+    };
+    await repository.save(task);
+    await prisma.taskEvent.create({
+      data: {
+        taskId: task.id,
+        fromStatus: 'todo',
+        toStatus: 'in_progress',
+        version: 2,
+      },
+    });
+
+    await expect(
+      repository.updateStatus(task.id, 'in_progress', 1),
+    ).rejects.toThrow();
+    await expect(repository.findById(task.id)).resolves.toEqual(task);
+    await expect(
+      prisma.taskEvent.count({ where: { taskId: task.id } }),
+    ).resolves.toBe(1);
   });
 
   afterAll(async () => {

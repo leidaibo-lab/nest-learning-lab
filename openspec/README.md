@@ -44,4 +44,4 @@ openspec archive <change-name>
 - `git diff` 中没有无关改动。
 - 提交信息符合 `type(scope): message`。
 
-当前稳定规格包括 `task-management`、`task-validation` 和 `task-persistence`；前三阶段变更均已归档到 `changes/archive/`。下一项计划变更将为任务状态更新增加事务与并发控制。
+当前稳定规格包括 `task-management`、`task-validation`、`task-persistence` 和 `task-status`；前四阶段变更均已归档到 `changes/archive/`。下一项计划变更将进入认证与授权。

@@ -1,7 +1,8 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { CreateTaskDto } from './create-task.dto';
 import { Task } from './task';
 import { TasksService } from './tasks.service';
+import { UpdateTaskStatusDto } from './update-task-status.dto';
 
 @Controller('tasks')
 export class TasksController {
@@ -15,5 +16,17 @@ export class TasksController {
   @Get(':id')
   findById(@Param('id') id: string): Promise<Task> {
     return this.tasksService.findById(id);
+  }
+
+  @Patch(':id/status')
+  updateStatus(
+    @Param('id') id: string,
+    @Body() input: UpdateTaskStatusDto,
+  ): Promise<Task> {
+    return this.tasksService.updateStatus(
+      id,
+      input.status,
+      input.expectedVersion,
+    );
   }
 }

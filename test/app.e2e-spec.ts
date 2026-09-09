@@ -60,6 +60,7 @@ describe('Application (e2e)', () => {
       id: expect.any(String) as string,
       title: 'Learn NestJS modules',
       status: 'todo',
+      version: 1,
       createdAt: expect.any(String) as string,
     });
 
@@ -131,6 +132,54 @@ describe('Application (e2e)', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json<Task>()).toEqual(created);
+  });
+
+  it('updates a task status with the expected version', async () => {
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/tasks',
+      payload: { title: 'Practice status transitions' },
+    });
+    const created = createResponse.json<Task>();
+
+    const updateResponse = await app.inject({
+      method: 'PATCH',
+      url: `/tasks/${created.id}/status`,
+      payload: { status: 'in_progress', expectedVersion: created.version },
+    });
+
+    expect(updateResponse.statusCode).toBe(200);
+    expect(updateResponse.json<Task>()).toEqual({
+      ...created,
+      status: 'in_progress',
+      version: 2,
+    });
+  });
+
+  it('returns 409 when two updates use the same version', async () => {
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/tasks',
+      payload: { title: 'Practice optimistic locking' },
+    });
+    const created = createResponse.json<Task>();
+
+    const responses = await Promise.all(
+      ['in_progress', 'done'].map((status) =>
+        app.inject({
+          method: 'PATCH',
+          url: `/tasks/${created.id}/status`,
+          payload: { status, expectedVersion: created.version },
+        }),
+      ),
+    );
+
+    expect(responses.map((response) => response.statusCode).sort()).toEqual([
+      200, 409,
+    ]);
+    expect(
+      responses.filter((response) => response.statusCode === 200),
+    ).toHaveLength(1);
   });
 
   afterEach(async () => {

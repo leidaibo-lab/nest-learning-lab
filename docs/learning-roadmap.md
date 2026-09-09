@@ -24,7 +24,7 @@
 第一阶段现已完成，并归档为 `openspec/changes/archive/2026-09-01-establish-task-module/`：
 
 - `TasksModule` 已形成独立业务边界，并由 `AppModule` 导入。
-- 任务服务通过自定义 Token 使用 Repository 抽象，当前绑定内存实现。
+- 任务服务通过自定义 Token 使用 Repository 抽象，生产环境绑定 Prisma 实现，单元测试使用 mock 或 fake Repository。
 - `POST /tasks` 与 `GET /tasks/:id` 已形成可运行的创建、查询链路。
 - Service 单元测试与 Fastify E2E 测试已覆盖成功和关键失败场景。
 
@@ -40,7 +40,14 @@
 - ConfigModule 与 DatabaseModule 已集中管理连接配置和 Prisma 生命周期。
 - 生产 Repository Provider 已切换为 Prisma 实现，Controller、Service 和 Repository 接口保持不变。
 - 数据库集成测试和跨应用实例 E2E 已验证任务不会随进程关闭而丢失。
-- 当前尚未覆盖：任务更新事务与并发控制、认证授权、横切能力、异步流程和生产部署。下一增量将先补任务状态更新和事务边界。
+
+第四阶段现已完成，并归档为 `openspec/changes/archive/2026-09-02-update-task-status/`：
+
+- 任务状态支持 `todo`、`in_progress` 和 `done`，并通过 `version` 实现乐观并发控制。
+- `PATCH /tasks/:id/status` 在进入数据库前校验状态转换和请求版本。
+- Prisma Repository 使用 `$transaction` 同时更新 Task 和写入 TaskEvent。
+- 并发请求使用相同版本时只有一个成功，事件写入失败会回滚任务状态。
+- 当前尚未覆盖：认证授权、横切能力、异步流程和生产部署。下一步进入认证与授权。
 
 ## 3. 主线业务模型
 
@@ -133,3 +140,11 @@ docs(learning): 记录请求生命周期
 - 保持 Controller 和核心业务规则不依赖具体 ORM。
 
 建议 OpenSpec 变更名：`persist-tasks`。
+
+### 迭代四：状态更新与事务
+
+状态：已完成，归档变更为 `2026-09-02-update-task-status`。
+
+- 增加任务状态流转和版本号。
+- 使用 Repository 条件更新处理并发冲突。
+- 使用 Prisma `$transaction` 保证任务和操作事件原子提交。
