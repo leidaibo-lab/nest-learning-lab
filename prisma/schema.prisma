@@ -8,14 +8,54 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id             String          @id @default(uuid()) @db.Uuid
+  email          String          @unique @db.VarChar(254)
+  passwordHash   String          @map("password_hash") @db.VarChar(255)
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  ownedProjects  Project[]       @relation("ProjectOwner")
+  memberships    ProjectMember[]
+
+  @@map("users")
+}
+
+model Project {
+  id          String          @id @default(uuid()) @db.Uuid
+  name        String          @db.VarChar(120)
+  ownerId     String          @map("owner_id") @db.Uuid
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  owner       User            @relation("ProjectOwner", fields: [ownerId], references: [id])
+  members     ProjectMember[]
+  tasks       Task[]
+
+  @@index([ownerId])
+  @@map("projects")
+}
+
+model ProjectMember {
+  projectId String   @map("project_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  role      String   @default("member") @db.VarChar(20)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, userId])
+  @@index([userId])
+  @@map("project_members")
+}
+
 model Task {
   id        String      @id @db.Uuid
+  projectId String      @map("project_id") @db.Uuid
   title     String      @db.VarChar(120)
   status    String      @default("todo") @db.VarChar(20)
   version   Int         @default(1)
   createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   events    TaskEvent[]
 
+  @@index([projectId, createdAt])
   @@map("tasks")
 }
 

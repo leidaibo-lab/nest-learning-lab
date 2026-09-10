@@ -49,6 +49,15 @@
 - 并发请求使用相同版本时只有一个成功，事件写入失败会回滚任务状态。
 - 当前尚未覆盖：认证授权、横切能力、异步流程和生产部署。下一步进入认证与授权。
 
+第五阶段现已完成，并归档为 `openspec/changes/archive/2026-09-09-add-auth-and-authorization/`：
+
+- 新增用户注册、登录和基于 HS256 的 JWT Bearer Token 认证，使用 `@nestjs/jwt` 负责 JWT，使用 `argon2id` 保存密码哈希。
+- `JwtAuthGuard` 负责确认用户身份，`ProjectAccessGuard` 负责确认项目成员关系，`@CurrentUser()` 和 `@Roles()` 展示请求上下文与角色元数据的使用。
+- 新增项目和项目成员模型，项目创建与 owner 成员写入在同一个 Prisma 事务中完成。
+- 任务必须属于项目；任务创建、查询和状态更新均要求项目成员，项目成员管理仅允许 owner。
+- 认证实现按成熟库方案收敛：Access Token 有效期 15 分钟，校验 issuer/audience，旧 `scrypt` 哈希在成功登录后自动升级为 Argon2id。
+- 当前尚未覆盖：刷新 Token、密码找回、OAuth、横切能力、异步流程和生产部署。
+
 ## 3. 主线业务模型
 
 ```text
@@ -148,3 +157,12 @@ docs(learning): 记录请求生命周期
 - 增加任务状态流转和版本号。
 - 使用 Repository 条件更新处理并发冲突。
 - 使用 Prisma `$transaction` 保证任务和操作事件原子提交。
+
+### 迭代五：认证与授权
+
+状态：已完成，归档变更为 `2026-09-09-add-auth-and-authorization`。
+
+- 增加用户注册、登录和 JWT 认证 Guard。
+- 增加项目 owner/member 关系和项目访问授权 Guard。
+- 将任务绑定到项目，覆盖成员访问与越权失败场景。
+- 使用 `@nestjs/jwt` 和 `argon2id` 替换手写 JWT 与 Node `scrypt` 主路径，保留旧哈希兼容迁移。

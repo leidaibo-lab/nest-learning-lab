@@ -33,10 +33,14 @@ describe('TasksService', () => {
   });
 
   it('creates a task with normalized title and initial fields', async () => {
-    const task = await service.create({ title: '  Learn NestJS  ' });
+    const task = await service.create({
+      projectId: 'project-1',
+      title: '  Learn NestJS  ',
+    });
 
     expect(task).toEqual({
       id: expect.any(String) as string,
+      projectId: 'project-1',
       title: 'Learn NestJS',
       status: 'todo',
       version: 1,
@@ -45,7 +49,10 @@ describe('TasksService', () => {
   });
 
   it('finds a previously created task', async () => {
-    const created = await service.create({ title: 'Learn providers' });
+    const created = await service.create({
+      projectId: 'project-1',
+      title: 'Learn providers',
+    });
     repository.findById.mockResolvedValue(created);
 
     await expect(service.findById(created.id)).resolves.toEqual(created);
@@ -60,7 +67,10 @@ describe('TasksService', () => {
   });
 
   it('updates a task status and increments its version', async () => {
-    const created = await service.create({ title: 'Learn transactions' });
+    const created = await service.create({
+      projectId: 'project-1',
+      title: 'Learn transactions',
+    });
     const updated = { ...created, status: 'in_progress' as const, version: 2 };
     repository.findById.mockResolvedValue(created);
     repository.updateStatus.mockResolvedValue({
@@ -79,7 +89,10 @@ describe('TasksService', () => {
   });
 
   it('rejects an outdated version', async () => {
-    const created = await service.create({ title: 'Learn optimistic locks' });
+    const created = await service.create({
+      projectId: 'project-1',
+      title: 'Learn optimistic locks',
+    });
     repository.findById.mockResolvedValue({
       ...created,
       status: 'in_progress',
@@ -93,7 +106,10 @@ describe('TasksService', () => {
   });
 
   it('rejects a transition from done', async () => {
-    const created = await service.create({ title: 'Complete the lesson' });
+    const created = await service.create({
+      projectId: 'project-1',
+      title: 'Complete the lesson',
+    });
     const done = { ...created, status: 'done' as const, version: 3 };
     repository.findById.mockResolvedValue(done);
 

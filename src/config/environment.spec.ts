@@ -12,8 +12,20 @@ describe('validateEnvironment', () => {
     const databaseUrl =
       'postgresql://nest:nest@localhost:5433/nest_learning_lab';
 
-    expect(validateEnvironment({ DATABASE_URL: databaseUrl })).toEqual({
+    expect(
+      validateEnvironment({
+        DATABASE_URL: databaseUrl,
+        JWT_SECRET: 'local-development-secret-change-before-production-2026',
+        JWT_ISSUER: 'nest-learning-lab',
+        JWT_AUDIENCE: 'task-api',
+        JWT_ACCESS_TOKEN_TTL: '15m',
+      }),
+    ).toEqual({
       DATABASE_URL: databaseUrl,
+      JWT_SECRET: 'local-development-secret-change-before-production-2026',
+      JWT_ISSUER: 'nest-learning-lab',
+      JWT_AUDIENCE: 'task-api',
+      JWT_ACCESS_TOKEN_TTL: '15m',
     });
   });
 });

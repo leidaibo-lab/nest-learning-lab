@@ -11,6 +11,7 @@ describe('PrismaTaskRepository (integration)', () => {
   let module: TestingModule;
   let prisma: PrismaService;
   let repository: PrismaTaskRepository;
+  let projectId: string;
 
   beforeAll(async () => {
     module = await Test.createTestingModule({
@@ -31,12 +32,22 @@ describe('PrismaTaskRepository (integration)', () => {
   });
 
   beforeEach(async () => {
-    await prisma.task.deleteMany();
+    const user = await prisma.user.create({
+      data: {
+        email: `${randomUUID()}@example.com`,
+        passwordHash: 'test-hash',
+      },
+    });
+    const project = await prisma.project.create({
+      data: { name: 'Repository project', ownerId: user.id },
+    });
+    projectId = project.id;
   });
 
   it('persists and retrieves a task', async () => {
     const task: Task = {
       id: randomUUID(),
+      projectId,
       title: 'Learn Prisma repository',
       status: 'todo',
       version: 1,
@@ -54,6 +65,7 @@ describe('PrismaTaskRepository (integration)', () => {
   it('updates a task and creates an event in one transaction', async () => {
     const task: Task = {
       id: randomUUID(),
+      projectId,
       title: 'Learn transactions',
       status: 'todo',
       version: 1,
@@ -75,6 +87,7 @@ describe('PrismaTaskRepository (integration)', () => {
   it('returns a conflict without changing the task or adding an event', async () => {
     const task: Task = {
       id: randomUUID(),
+      projectId,
       title: 'Learn compare and swap',
       status: 'todo',
       version: 1,
@@ -94,6 +107,7 @@ describe('PrismaTaskRepository (integration)', () => {
   it('rolls back the task when event creation fails', async () => {
     const task: Task = {
       id: randomUUID(),
+      projectId,
       title: 'Learn atomic transactions',
       status: 'todo',
       version: 1,

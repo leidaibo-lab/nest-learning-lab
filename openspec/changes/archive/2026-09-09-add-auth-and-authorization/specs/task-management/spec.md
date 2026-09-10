@@ -1,8 +1,5 @@
-# task-management Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change establish-task-module. Update Purpose after archive.
-## Requirements
 ### Requirement: 创建任务
 
 系统 MUST 接受认证项目成员提交的非空任务标题和项目标识，创建具有唯一标识、项目归属、标准化标题、初始 `todo` 状态、版本号 1 和创建时间的任务，并通过 `POST /tasks` 返回该任务。

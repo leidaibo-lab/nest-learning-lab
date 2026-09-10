@@ -27,6 +27,7 @@ export class TasksService {
   async create(input: CreateTaskDto): Promise<Task> {
     const task: Task = {
       id: randomUUID(),
+      projectId: input.projectId,
       title: input.title.trim(),
       status: 'todo',
       version: 1,

@@ -6,11 +6,12 @@ import {
 } from '@nestjs/platform-fastify';
 import { randomUUID } from 'node:crypto';
 import { AppModule } from './../src/app.module';
-import { PrismaService } from './../src/database/prisma.service';
 import { Task } from './../src/tasks/task';
 
 describe('Application (e2e)', () => {
   let app: NestFastifyApplication;
+  let accessToken: string;
+  let projectId: string;
 
   async function createApplication(): Promise<NestFastifyApplication> {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -34,7 +35,23 @@ describe('Application (e2e)', () => {
 
   beforeEach(async () => {
     app = await createApplication();
-    await app.get(PrismaService).task.deleteMany();
+    const suffix = randomUUID();
+    const registerResponse = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: {
+        email: `owner-${suffix}@example.com`,
+        password: 'password123',
+      },
+    });
+    accessToken = registerResponse.json<{ accessToken: string }>().accessToken;
+    const projectResponse = await app.inject({
+      method: 'POST',
+      url: '/projects',
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { name: 'Learning project' },
+    });
+    projectId = projectResponse.json<{ id: string }>().id;
   });
 
   it('/ (GET)', async () => {
@@ -47,11 +64,43 @@ describe('Application (e2e)', () => {
     expect(response.payload).toBe('Hello World!');
   });
 
+  it('rejects an unauthenticated task request', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/tasks',
+      payload: { projectId, title: 'Should require authentication' },
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('logs in with registered credentials', async () => {
+    const email = `login-${randomUUID()}@example.com`;
+    const password = 'password123';
+    await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: { email, password },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { email, password },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(
+      expect.objectContaining({ accessToken: expect.any(String) as string }),
+    );
+  });
+
   it('creates and retrieves a task', async () => {
     const createResponse = await app.inject({
       method: 'POST',
       url: '/tasks',
-      payload: { title: '  Learn NestJS modules  ' },
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { projectId, title: '  Learn NestJS modules  ' },
     });
 
     expect(createResponse.statusCode).toBe(201);
@@ -61,12 +110,14 @@ describe('Application (e2e)', () => {
       title: 'Learn NestJS modules',
       status: 'todo',
       version: 1,
+      projectId,
       createdAt: expect.any(String) as string,
     });
 
     const getResponse = await app.inject({
       method: 'GET',
       url: `/tasks/${created.id}`,
+      headers: { authorization: `Bearer ${accessToken}` },
     });
 
     expect(getResponse.statusCode).toBe(200);
@@ -77,7 +128,8 @@ describe('Application (e2e)', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/tasks',
-      payload: {},
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { projectId },
     });
 
     expect(response.statusCode).toBe(400);
@@ -92,6 +144,7 @@ describe('Application (e2e)', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/tasks',
+      headers: { authorization: `Bearer ${accessToken}` },
       payload,
     });
 
@@ -109,6 +162,7 @@ describe('Application (e2e)', () => {
     const response = await app.inject({
       method: 'GET',
       url: `/tasks/${randomUUID()}`,
+      headers: { authorization: `Bearer ${accessToken}` },
     });
 
     expect(response.statusCode).toBe(404);
@@ -118,7 +172,8 @@ describe('Application (e2e)', () => {
     const createResponse = await app.inject({
       method: 'POST',
       url: '/tasks',
-      payload: { title: 'Persist across application instances' },
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { projectId, title: 'Persist across application instances' },
     });
     const created = createResponse.json<Task>();
 
@@ -128,6 +183,7 @@ describe('Application (e2e)', () => {
     const response = await app.inject({
       method: 'GET',
       url: `/tasks/${created.id}`,
+      headers: { authorization: `Bearer ${accessToken}` },
     });
 
     expect(response.statusCode).toBe(200);
@@ -138,13 +194,15 @@ describe('Application (e2e)', () => {
     const createResponse = await app.inject({
       method: 'POST',
       url: '/tasks',
-      payload: { title: 'Practice status transitions' },
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { projectId, title: 'Practice status transitions' },
     });
     const created = createResponse.json<Task>();
 
     const updateResponse = await app.inject({
       method: 'PATCH',
       url: `/tasks/${created.id}/status`,
+      headers: { authorization: `Bearer ${accessToken}` },
       payload: { status: 'in_progress', expectedVersion: created.version },
     });
 
@@ -160,7 +218,8 @@ describe('Application (e2e)', () => {
     const createResponse = await app.inject({
       method: 'POST',
       url: '/tasks',
-      payload: { title: 'Practice optimistic locking' },
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { projectId, title: 'Practice optimistic locking' },
     });
     const created = createResponse.json<Task>();
 
@@ -169,6 +228,7 @@ describe('Application (e2e)', () => {
         app.inject({
           method: 'PATCH',
           url: `/tasks/${created.id}/status`,
+          headers: { authorization: `Bearer ${accessToken}` },
           payload: { status, expectedVersion: created.version },
         }),
       ),
@@ -180,6 +240,66 @@ describe('Application (e2e)', () => {
     expect(
       responses.filter((response) => response.statusCode === 200),
     ).toHaveLength(1);
+  });
+
+  it('blocks a non-member from reading a project task', async () => {
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/tasks',
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { projectId, title: 'Private project task' },
+    });
+    const created = createResponse.json<Task>();
+    const outsiderEmail = `outsider-${randomUUID()}@example.com`;
+    const outsiderResponse = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: { email: outsiderEmail, password: 'password123' },
+    });
+    const outsiderToken = outsiderResponse.json<{ accessToken: string }>()
+      .accessToken;
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/tasks/${created.id}`,
+      headers: { authorization: `Bearer ${outsiderToken}` },
+    });
+
+    expect(response.statusCode).toBe(403);
+  });
+
+  it('allows an invited member to read tasks but not invite others', async () => {
+    const memberEmail = `member-${randomUUID()}@example.com`;
+    const memberRegistration = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: { email: memberEmail, password: 'password123' },
+    });
+    const memberToken = memberRegistration.json<{ accessToken: string }>()
+      .accessToken;
+    const inviteResponse = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/members`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { email: memberEmail },
+    });
+    expect(inviteResponse.statusCode).toBe(201);
+
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/tasks',
+      headers: { authorization: `Bearer ${memberToken}` },
+      payload: { projectId, title: 'Member can read this task' },
+    });
+    expect(createResponse.statusCode).toBe(201);
+
+    const forbiddenInvite = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/members`,
+      headers: { authorization: `Bearer ${memberToken}` },
+      payload: { email: `another-${randomUUID()}@example.com` },
+    });
+    expect(forbiddenInvite.statusCode).toBe(403);
   });
 
   afterEach(async () => {

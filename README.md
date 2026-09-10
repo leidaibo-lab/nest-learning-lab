@@ -43,6 +43,8 @@ pnpm prisma:migrate:deploy
 
 本地 PostgreSQL 通过 Docker Compose 暴露在 `127.0.0.1:5433`。停止容器使用 `pnpm db:down`；该命令保留数据卷。
 
+应用启动还需要设置 `JWT_SECRET`、`JWT_ISSUER`、`JWT_AUDIENCE` 和 `JWT_ACCESS_TOKEN_TTL`，本地示例已放在 `.env.example`。任务接口需要先通过 `/auth/register` 或 `/auth/login` 获取 Bearer Token，并在创建任务时提供所属项目的 `projectId`。生产环境应将这些配置注入 Secret Manager 或环境变量，不提交真实密钥。
+
 ## Compile and run the project
 
 ```bash

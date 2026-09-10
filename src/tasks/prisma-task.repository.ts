@@ -12,6 +12,7 @@ export class PrismaTaskRepository implements TaskRepository {
     const saved = await this.prisma.task.create({
       data: {
         id: task.id,
+        projectId: task.projectId,
         title: task.title,
         status: task.status,
         version: task.version,
@@ -81,6 +82,7 @@ export class PrismaTaskRepository implements TaskRepository {
 
     return {
       id: task.id,
+      projectId: task.projectId,
       title: task.title,
       status: task.status as TaskStatus,
       version: task.version,
