@@ -28,6 +28,7 @@
 ## Learning workflow
 
 - [系统学习路线](docs/learning-roadmap.md)：学习阶段、业务增量、验收标准与近期迭代。
+- [业务并发控制专题](docs/learning-roadmap.md#5-业务并发控制专题)：条件更新、事务、幂等、重试和分布式一致性学习入口。
 - [OpenSpec 工作流](openspec/README.md)：以规格驱动每个学习增量的提案、设计、任务和归档。
 - [Agent 工作入口](AGENTS.md)：统一导航项目规则、OpenSpec 变更和后续项目级 Skills。
 
@@ -119,6 +120,17 @@ curl -i -H 'x-request-id: local-debug-001' http://localhost:3000/health
 ```
 
 请求失败时，响应 JSON 中的 `requestId` 与 `x-request-id` 响应头相同；将该值交给服务端即可定位对应的结构化 HTTP 日志。
+
+### 异步通知接口用法
+
+任务状态更新成功后，系统会在后台处理通知任务；使用同一 Bearer Token 查询当前用户收到的任务状态通知：
+
+```bash
+curl -i -H "Authorization: Bearer $ACCESS_TOKEN" \
+  http://localhost:3000/notifications
+```
+
+通知任务由 PostgreSQL outbox 持久化，最多重试 3 次；通知写入使用任务事件和用户的唯一约束保证幂等。
 
 ## Compile and run the project
 

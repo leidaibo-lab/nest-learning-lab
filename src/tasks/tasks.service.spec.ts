@@ -6,10 +6,12 @@ import {
 import { Test, TestingModule } from '@nestjs/testing';
 import { TASK_REPOSITORY, TaskRepository } from './task.repository';
 import { TasksService } from './tasks.service';
+import { NotificationScheduler } from '../notifications/notification.scheduler';
 
 describe('TasksService', () => {
   let service: TasksService;
   let repository: jest.Mocked<TaskRepository>;
+  let notificationScheduler: jest.Mocked<NotificationScheduler>;
 
   beforeEach(async () => {
     repository = {
@@ -17,6 +19,7 @@ describe('TasksService', () => {
       findById: jest.fn(),
       updateStatus: jest.fn(),
     };
+    notificationScheduler = { schedule: jest.fn() };
     repository.save.mockImplementation((task) => Promise.resolve(task));
 
     const module: TestingModule = await Test.createTestingModule({
@@ -25,6 +28,10 @@ describe('TasksService', () => {
         {
           provide: TASK_REPOSITORY,
           useValue: repository,
+        },
+        {
+          provide: NotificationScheduler,
+          useValue: notificationScheduler,
         },
       ],
     }).compile();
@@ -86,6 +93,7 @@ describe('TasksService', () => {
       'in_progress',
       created.version,
     ]);
+    expect(notificationScheduler.schedule.mock.calls).toHaveLength(1);
   });
 
   it('rejects an outdated version', async () => {

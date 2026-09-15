@@ -6,6 +6,7 @@ import { DatabaseModule } from '../src/database/database.module';
 import { PrismaService } from '../src/database/prisma.service';
 import { PrismaTaskRepository } from '../src/tasks/prisma-task.repository';
 import { Task } from '../src/tasks/task';
+import { NotificationProcessor } from '../src/notifications/notification.processor';
 
 describe('PrismaTaskRepository (integration)', () => {
   let module: TestingModule;
@@ -40,6 +41,9 @@ describe('PrismaTaskRepository (integration)', () => {
     });
     const project = await prisma.project.create({
       data: { name: 'Repository project', ownerId: user.id },
+    });
+    await prisma.projectMember.create({
+      data: { projectId: project.id, userId: user.id, role: 'owner' },
     });
     projectId = project.id;
   });
@@ -81,6 +85,9 @@ describe('PrismaTaskRepository (integration)', () => {
     });
     await expect(
       prisma.taskEvent.count({ where: { taskId: task.id } }),
+    ).resolves.toBe(1);
+    await expect(
+      prisma.notificationJob.count({ where: { event: { taskId: task.id } } }),
     ).resolves.toBe(1);
   });
 
@@ -129,6 +136,73 @@ describe('PrismaTaskRepository (integration)', () => {
     await expect(repository.findById(task.id)).resolves.toEqual(task);
     await expect(
       prisma.taskEvent.count({ where: { taskId: task.id } }),
+    ).resolves.toBe(1);
+  });
+
+  it('writes no notification job when the status transaction rolls back', async () => {
+    const task: Task = {
+      id: randomUUID(),
+      projectId,
+      title: 'Learn outbox atomicity',
+      status: 'todo',
+      version: 1,
+      createdAt: new Date().toISOString(),
+    };
+    await repository.save(task);
+    await prisma.taskEvent.create({
+      data: {
+        taskId: task.id,
+        fromStatus: 'todo',
+        toStatus: 'in_progress',
+        version: 2,
+      },
+    });
+
+    await expect(
+      repository.updateStatus(task.id, 'in_progress', 1),
+    ).rejects.toThrow();
+    await expect(
+      prisma.notificationJob.count({ where: { event: { taskId: task.id } } }),
+    ).resolves.toBe(0);
+  });
+
+  it('processes the outbox and remains idempotent on repeated delivery', async () => {
+    const task: Task = {
+      id: randomUUID(),
+      projectId,
+      title: 'Learn asynchronous processing',
+      status: 'todo',
+      version: 1,
+      createdAt: new Date().toISOString(),
+    };
+    await repository.save(task);
+    await expect(
+      repository.updateStatus(task.id, 'in_progress', 1),
+    ).resolves.toMatchObject({
+      kind: 'updated',
+    });
+
+    const processor = new NotificationProcessor(prisma);
+    await processor.processPending();
+
+    const firstCount = await prisma.notification.count({
+      where: {
+        taskEvent: { taskId: task.id },
+        userId: (
+          await prisma.projectMember.findFirstOrThrow({ where: { projectId } })
+        ).userId,
+      },
+    });
+    expect(firstCount).toBe(1);
+
+    await prisma.notificationJob.updateMany({
+      where: { event: { taskId: task.id } },
+      data: { status: 'pending', availableAt: new Date() },
+    });
+    await processor.processPending();
+
+    await expect(
+      prisma.notification.count({ where: { taskEvent: { taskId: task.id } } }),
     ).resolves.toBe(1);
   });
 

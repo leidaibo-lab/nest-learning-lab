@@ -248,6 +248,93 @@ describe('Application (e2e)', () => {
     });
   });
 
+  it('creates an asynchronous notification for project members', async () => {
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/tasks',
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { projectId, title: 'Notify status changes' },
+    });
+    const created = createResponse.json<Task>();
+
+    const updateResponse = await app.inject({
+      method: 'PATCH',
+      url: `/tasks/${created.id}/status`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { status: 'in_progress', expectedVersion: created.version },
+    });
+    expect(updateResponse.statusCode).toBe(200);
+
+    let notifications: unknown[] = [];
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/notifications',
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+      notifications = response.json<unknown[]>();
+      if (notifications.length === 1) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    expect(notifications).toEqual([
+      expect.objectContaining({
+        taskEventId: expect.any(String) as string,
+        kind: 'task.status_changed',
+        payload: {
+          taskId: created.id,
+          fromStatus: 'todo',
+          toStatus: 'in_progress',
+          version: 2,
+        },
+      }),
+    ]);
+  });
+
+  it('rejects unauthenticated notification queries', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/notifications',
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+
+  it("does not expose another user's notifications", async () => {
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/tasks',
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { projectId, title: 'Keep notifications private' },
+    });
+    const created = createResponse.json<Task>();
+    await app.inject({
+      method: 'PATCH',
+      url: `/tasks/${created.id}/status`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { status: 'in_progress', expectedVersion: created.version },
+    });
+
+    const outsiderEmail = `notification-outsider-${randomUUID()}@example.com`;
+    const outsiderResponse = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: { email: outsiderEmail, password: 'password123' },
+    });
+    const outsiderToken = outsiderResponse.json<{ accessToken: string }>()
+      .accessToken;
+    const response = await app.inject({
+      method: 'GET',
+      url: '/notifications',
+      headers: { authorization: `Bearer ${outsiderToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual([]);
+  });
+
   it('returns 409 when two updates use the same version', async () => {
     const createResponse = await app.inject({
       method: 'POST',

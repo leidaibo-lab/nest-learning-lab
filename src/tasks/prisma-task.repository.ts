@@ -56,13 +56,17 @@ export class PrismaTaskRepository implements TaskRepository {
         return { kind: 'conflict' };
       }
 
-      await transaction.taskEvent.create({
+      // TaskEvent 是审计事实，NotificationJob 是异步 outbox；两者必须和任务状态一起提交。
+      const event = await transaction.taskEvent.create({
         data: {
           taskId: id,
           fromStatus: current.status,
           toStatus: status,
           version: expectedVersion + 1,
         },
+      });
+      await transaction.notificationJob.create({
+        data: { eventId: event.id },
       });
 
       const updated = await transaction.task.findUnique({ where: { id } });

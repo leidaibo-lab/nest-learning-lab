@@ -15,6 +15,7 @@ model User {
   createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
   ownedProjects  Project[]       @relation("ProjectOwner")
   memberships    ProjectMember[]
+  notifications  Notification[]
 
   @@map("users")
 }
@@ -67,8 +68,40 @@ model TaskEvent {
   version    Int
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  notificationJob NotificationJob?
+  notifications Notification[]
 
   @@unique([taskId, version])
   @@index([taskId, createdAt])
   @@map("task_events")
+}
+
+model NotificationJob {
+  id          String   @id @default(uuid()) @db.Uuid
+  eventId     String   @unique @map("event_id") @db.Uuid
+  status      String   @default("pending") @db.VarChar(20)
+  attempts    Int      @default(0)
+  availableAt DateTime @default(now()) @map("available_at") @db.Timestamptz(3)
+  lastError   String?  @map("last_error") @db.VarChar(500)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  event       TaskEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([status, availableAt])
+  @@map("notification_jobs")
+}
+
+model Notification {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  taskEventId String   @map("task_event_id") @db.Uuid
+  kind        String   @db.VarChar(50)
+  payload     Json
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskEvent   TaskEvent @relation(fields: [taskEventId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, taskEventId])
+  @@index([userId, createdAt])
+  @@map("notifications")
 }

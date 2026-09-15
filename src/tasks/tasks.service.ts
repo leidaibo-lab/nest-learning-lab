@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { CreateTaskDto } from './create-task.dto';
+import { NotificationScheduler } from '../notifications/notification.scheduler';
 import { Task, TaskStatus } from './task';
 import { TASK_REPOSITORY } from './task.repository';
 import type { TaskRepository } from './task.repository';
@@ -22,6 +23,7 @@ export class TasksService {
   constructor(
     @Inject(TASK_REPOSITORY)
     private readonly taskRepository: TaskRepository,
+    private readonly notificationScheduler: NotificationScheduler,
   ) {}
 
   async create(input: CreateTaskDto): Promise<Task> {
@@ -78,6 +80,8 @@ export class TasksService {
       throw new ConflictException('任务版本已过期，请重新获取后再更新');
     }
 
+    // 事务已经提交后才触发后台扫描；通知失败不会把已成功的状态更新改成失败。
+    this.notificationScheduler.schedule();
     return result.task;
   }
 }

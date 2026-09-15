@@ -11,6 +11,7 @@ import { TasksModule } from './tasks/tasks.module';
 import { HealthModule } from './health/health.module';
 import { HttpExceptionFilter } from './observability/http-exception.filter';
 import { RequestLoggingInterceptor } from './observability/request-logging.interceptor';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { RequestLoggingInterceptor } from './observability/request-logging.inter
     ProjectsModule,
     TasksModule,
     HealthModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [
