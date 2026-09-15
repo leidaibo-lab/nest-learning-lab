@@ -11,6 +11,7 @@ async function bootstrap() {
     AppModule,
     new FastifyAdapter(),
   );
+  // ValidationPipe 在 Controller 执行前校验 DTO，并清理或拒绝未声明字段。
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,

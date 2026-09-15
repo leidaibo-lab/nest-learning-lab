@@ -58,6 +58,13 @@
 - 认证实现按成熟库方案收敛：Access Token 有效期 15 分钟，校验 issuer/audience，旧 `scrypt` 哈希在成功登录后自动升级为 Argon2id。
 - 当前尚未覆盖：刷新 Token、密码找回、OAuth、横切能力、异步流程和生产部署。
 
+第六阶段本次增量已完成，并归档为 `2026-09-10-add-request-observability-and-health`：
+
+- 全局拦截器为请求生成或透传 `x-request-id`，记录结构化 HTTP 日志。
+- 全局异常过滤器统一补充 `requestId`，并隐藏未知异常的内部细节。
+- 新增不要求认证的 `GET /health`，通过 Prisma 轻量查询检查数据库可用性。
+- 当前尚未覆盖：限流、OpenAPI、分布式追踪、异步通知、缓存和实时通信。
+
 ## 3. 主线业务模型
 
 ```text
@@ -74,15 +81,15 @@
 
 ## 4. 分阶段路线
 
-| 阶段 | NestJS 重点 | 业务增量 | 完成标准 |
-| --- | --- | --- | --- |
-| 1. 模块与依赖注入 | Module、Controller、Provider、自定义 Token | 创建与查询任务，先使用内存存储 | 模块边界清晰；业务规则有单元测试；HTTP 契约有 E2E 测试 |
-| 2. HTTP 请求生命周期 | DTO、Pipe、Filter、Interceptor、Middleware | 参数校验、分页、统一错误和响应格式 | 能说明完整请求链路；非法输入和异常路径有测试 |
-| 3. 数据持久化 | 动态模块、配置注入、Repository 边界 | PostgreSQL、迁移、事务和并发更新 | 数据可迁移；事务边界明确；测试不依赖执行顺序 |
-| 4. 认证与授权 | Guard、Decorator、Passport/JWT | 登录、项目成员和任务操作权限 | 认证与授权分离；越权场景被 E2E 测试覆盖 |
-| 5. 工程横切能力 | Config、Logger、Exception Filter、Health Check | 请求追踪、审计日志、限流和接口文档 | 关键请求可观测；配置可校验；服务可探活 |
-| 6. 异步与实时场景 | Event、BullMQ、Cache、WebSocket | 通知、后台任务、缓存和实时状态更新 | 重试与幂等策略明确；异步失败可追踪 |
-| 7. 生产化 | Testing、Lifecycle、Deployment | Docker、CI、优雅停机和部署 | 构建与测试自动化；部署、回滚和运行手册齐全 |
+| 阶段                 | NestJS 重点                                    | 业务增量                           | 完成标准                                               |
+| -------------------- | ---------------------------------------------- | ---------------------------------- | ------------------------------------------------------ |
+| 1. 模块与依赖注入    | Module、Controller、Provider、自定义 Token     | 创建与查询任务，先使用内存存储     | 模块边界清晰；业务规则有单元测试；HTTP 契约有 E2E 测试 |
+| 2. HTTP 请求生命周期 | DTO、Pipe、Filter、Interceptor、Middleware     | 参数校验、分页、统一错误和响应格式 | 能说明完整请求链路；非法输入和异常路径有测试           |
+| 3. 数据持久化        | 动态模块、配置注入、Repository 边界            | PostgreSQL、迁移、事务和并发更新   | 数据可迁移；事务边界明确；测试不依赖执行顺序           |
+| 4. 认证与授权        | Guard、Decorator、Passport/JWT                 | 登录、项目成员和任务操作权限       | 认证与授权分离；越权场景被 E2E 测试覆盖                |
+| 5. 工程横切能力      | Config、Logger、Exception Filter、Health Check | 请求追踪、审计日志、限流和接口文档 | 关键请求可观测；配置可校验；服务可探活                 |
+| 6. 异步与实时场景    | Event、BullMQ、Cache、WebSocket                | 通知、后台任务、缓存和实时状态更新 | 重试与幂等策略明确；异步失败可追踪                     |
+| 7. 生产化            | Testing、Lifecycle、Deployment                 | Docker、CI、优雅停机和部署         | 构建与测试自动化；部署、回滚和运行手册齐全             |
 
 微服务不作为前置目标。只有当模块边界、异步事件和独立扩缩容需求已经通过单体实现得到验证后，再评估拆分。
 
@@ -166,3 +173,11 @@ docs(learning): 记录请求生命周期
 - 增加项目 owner/member 关系和项目访问授权 Guard。
 - 将任务绑定到项目，覆盖成员访问与越权失败场景。
 - 使用 `@nestjs/jwt` 和 `argon2id` 替换手写 JWT 与 Node `scrypt` 主路径，保留旧哈希兼容迁移。
+
+### 迭代六：请求可观测性与健康检查
+
+状态：已完成，归档变更为 `2026-09-10-add-request-observability-and-health`。
+
+- 使用全局 Interceptor 生成请求 ID 并记录 HTTP 耗时和状态码。
+- 使用全局 Exception Filter 保持业务错误契约并关联请求 ID。
+- 使用独立 HealthModule 检查 PostgreSQL 连通性，提供容器和负载均衡器探针。

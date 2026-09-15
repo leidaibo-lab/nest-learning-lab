@@ -64,6 +64,40 @@ describe('Application (e2e)', () => {
     expect(response.payload).toBe('Hello World!');
   });
 
+  it('checks database health without authentication', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/health',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['x-request-id']).toEqual(expect.any(String));
+    expect(response.json()).toEqual({
+      status: 'ok',
+      checks: { database: 'up' },
+    });
+  });
+
+  it('propagates a valid request id and adds it to validation errors', async () => {
+    const requestId = 'e2e-trace-123';
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      headers: { 'x-request-id': requestId },
+      payload: { email: 'invalid' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.headers['x-request-id']).toBe(requestId);
+    expect(response.json()).toEqual(
+      expect.objectContaining({
+        requestId,
+        statusCode: 400,
+        message: expect.any(Array) as unknown[],
+      }),
+    );
+  });
+
   it('rejects an unauthenticated task request', async () => {
     const response = await app.inject({
       method: 'POST',
