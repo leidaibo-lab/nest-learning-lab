@@ -21,6 +21,8 @@ services:
       JWT_ISSUER: ${JWT_ISSUER:-nest-learning-lab}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-task-api}
       JWT_ACCESS_TOKEN_TTL: ${JWT_ACCESS_TOKEN_TTL:-15m}
+      THROTTLE_TTL: ${THROTTLE_TTL:-60000}
+      THROTTLE_LIMIT: ${THROTTLE_LIMIT:-100}
       PORT: 3000
     ports:
       - '${APP_PORT:-3000}:3000'

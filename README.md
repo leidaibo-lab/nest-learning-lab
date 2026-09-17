@@ -109,6 +109,8 @@ pnpm prisma:migrate:deploy
 
 所有 HTTP 响应都会返回 `x-request-id`，可使用该值关联应用日志；未认证的 `GET /health` 会执行数据库探活并返回服务状态。
 
+接口契约可通过 `http://localhost:3000/docs` 浏览，也可通过 `http://localhost:3000/docs-json` 获取 OpenAPI JSON。普通请求默认每分钟最多 100 次，注册和登录接口每分钟最多 5 次；可使用 `THROTTLE_TTL` 和 `THROTTLE_LIMIT` 调整普通请求窗口和配额。
+
 ### 横切能力接口用法
 
 ```bash

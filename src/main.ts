@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
+import { setupOpenApi } from './openapi';
 import {
   FastifyAdapter,
   NestFastifyApplication,
@@ -22,6 +23,7 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     }),
   );
+  setupOpenApi(app);
   // 监听端口放在所有启动配置完成之后，避免容器过早接收尚未准备好的请求。
   await app.listen(process.env.PORT ?? 3000, '0.0.0.0');
 }

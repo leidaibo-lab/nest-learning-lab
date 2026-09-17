@@ -44,4 +44,4 @@ openspec archive <change-name>
 - `git diff` 中没有无关改动。
 - 提交信息符合 `type(scope): message`。
 
-当前稳定规格包括 `task-management`、`task-validation`、`task-persistence`、`task-status`、`user-auth`、`project-membership`、`request-observability`、`service-health` 和 `task-notifications`；已完成变更均已归档到 `changes/archive/`，最近完成的变更为 `2026-09-15-2026-09-15-add-async-task-notifications`。
+当前稳定规格包括 `task-management`、`task-validation`、`task-persistence`、`task-status`、`user-auth`、`project-membership`、`request-observability`、`service-health`、`task-notifications`、`production-runtime`、`continuous-integration`、`api-contract` 和 `request-rate-limit`；已完成变更均已归档到 `changes/archive/`，最近完成的变更为 `2026-09-17-api-contract-and-rate-limits`。

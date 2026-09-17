@@ -1,0 +1,6 @@
+- [x] 1.1 安装 Swagger、Throttler 依赖并扩展限流环境配置
+- [x] 1.2 注册 OpenAPI 文档和全局限流 Guard
+- [x] 1.3 为 Controller、DTO 和认证入口补充契约与限流元数据
+- [x] 2.1 增加配置和 429 行为测试
+- [x] 2.2 更新学习路线、README 和稳定规格
+- [x] 2.3 运行 lint、单元测试、集成测试、E2E、构建和 OpenSpec 校验

@@ -30,11 +30,14 @@
     "test:integration": "jest --config ./test/jest-integration.json --runInBand"
   },
   "dependencies": {
+    "@fastify/static": "^10.1.4",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.0.1",
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/platform-fastify": "^11.2.1",
+    "@nestjs/swagger": "^11.4.7",
+    "@nestjs/throttler": "^6.6.0",
     "@prisma/client": "^6.19.3",
     "argon2": "^0.45.1",
     "class-transformer": "^0.5.1",

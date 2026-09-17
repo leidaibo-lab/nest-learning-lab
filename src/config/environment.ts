@@ -4,6 +4,28 @@ interface Environment {
   JWT_ISSUER: string;
   JWT_AUDIENCE: string;
   JWT_ACCESS_TOKEN_TTL: string;
+  THROTTLE_TTL: number;
+  THROTTLE_LIMIT: number;
+}
+
+function parsePositiveInteger(
+  value: unknown,
+  fallback: number,
+  name: string,
+): number {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  if (
+    typeof value !== 'string' ||
+    !/^[1-9][0-9]*$/.test(value) ||
+    !Number.isSafeInteger(Number(value))
+  ) {
+    throw new Error(`${name} 必须是正整数`);
+  }
+
+  return Number(value);
 }
 
 export function validateEnvironment(
@@ -49,11 +71,24 @@ export function validateEnvironment(
     throw new Error('JWT_ACCESS_TOKEN_TTL 必须是例如 15m、1h 的时长');
   }
 
+  const throttleTtl = parsePositiveInteger(
+    environment.THROTTLE_TTL,
+    60_000,
+    'THROTTLE_TTL',
+  );
+  const throttleLimit = parsePositiveInteger(
+    environment.THROTTLE_LIMIT,
+    100,
+    'THROTTLE_LIMIT',
+  );
+
   return {
     DATABASE_URL: databaseUrl,
     JWT_SECRET: jwtSecret,
     JWT_ISSUER: jwtIssuer,
     JWT_AUDIENCE: jwtAudience,
     JWT_ACCESS_TOKEN_TTL: jwtAccessTokenTtl,
+    THROTTLE_TTL: throttleTtl,
+    THROTTLE_LIMIT: throttleLimit,
   };
 }

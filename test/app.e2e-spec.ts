@@ -6,6 +6,7 @@ import {
 } from '@nestjs/platform-fastify';
 import { randomUUID } from 'node:crypto';
 import { AppModule } from './../src/app.module';
+import { setupOpenApi } from './../src/openapi';
 import { Task } from './../src/tasks/task';
 
 describe('Application (e2e)', () => {
@@ -29,6 +30,8 @@ describe('Application (e2e)', () => {
         forbidNonWhitelisted: true,
       }),
     );
+    // E2E 重点验证契约 JSON；真实 bootstrap 仍开启 Swagger UI 静态资源。
+    setupOpenApi(application, { ui: false });
     await application.init();
     return application;
   }
@@ -76,6 +79,52 @@ describe('Application (e2e)', () => {
       status: 'ok',
       checks: { database: 'up' },
     });
+  });
+
+  it('exposes an OpenAPI document for the HTTP contract', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/docs-json',
+    });
+
+    expect(response.statusCode).toBe(200);
+    const document = response.json<{
+      paths: Record<string, unknown>;
+      components?: { securitySchemes?: Record<string, unknown> };
+    }>();
+    expect(document.paths).toEqual(
+      expect.objectContaining({
+        '/auth/register': expect.any(Object) as object,
+        '/auth/login': expect.any(Object) as object,
+        '/tasks': expect.any(Object) as object,
+        '/notifications': expect.any(Object) as object,
+        '/health': expect.any(Object) as object,
+      }),
+    );
+    expect(document.components?.securitySchemes).toEqual(
+      expect.objectContaining({ bearer: expect.any(Object) as object }),
+    );
+  });
+
+  it('returns 429 after exceeding the authentication rate limit', async () => {
+    const statusCodes: number[] = [];
+    let limitedPayload = '';
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: { email: 'invalid', password: 'short' },
+      });
+      statusCodes.push(response.statusCode);
+      if (attempt === 5) {
+        limitedPayload = response.payload;
+      }
+    }
+
+    expect(statusCodes.slice(0, 5)).toEqual([400, 400, 400, 400, 400]);
+    expect(statusCodes[5]).toBe(429);
+    expect(limitedPayload).toContain('"statusCode":429');
+    expect(limitedPayload).toMatch(/"requestId":"[^"]+"/);
   });
 
   it('propagates a valid request id and adds it to validation errors', async () => {

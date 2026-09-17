@@ -72,11 +72,17 @@
 - 新增认证后的 `GET /notifications` 查询当前用户的任务状态通知。
 - 本次暂不覆盖 Redis/BullMQ、WebSocket、缓存和外部推送渠道。
 
-第八阶段“生产化”正在进行，本次变更为 `productionize-task-service`：
+第八阶段“生产化”已完成，并归档为 `2026-09-17-productionize-task-service`：
 
 - 使用多阶段 Docker 镜像和 migration entrypoint 固定生产启动流程。
 - 使用 GitHub Actions 在 PostgreSQL 服务容器中执行完整质量门禁。
 - 使用 Nest shutdown hooks 验证 `SIGTERM`、后台通知处理器和 Prisma 连接的关闭顺序。
+
+第九阶段“接口契约与入口保护”已完成，并归档为 `2026-09-17-api-contract-and-rate-limits`：
+
+- 使用 `@nestjs/swagger` 从 Controller/DTO 元数据生成 `/docs` 和 `/docs-json`。
+- 使用 `@nestjs/throttler` 通过全局 Guard 限制请求频率，认证入口使用更严格策略。
+- 本次暂不覆盖 Redis 分布式限流、API Key、OAuth2 和客户端代码自动生成流水线。
 
 ## 3. 主线业务模型
 
@@ -103,6 +109,7 @@
 | 5. 工程横切能力      | Config、Logger、Exception Filter、Health Check | 请求追踪、审计日志、限流和接口文档 | 关键请求可观测；配置可校验；服务可探活                 |
 | 6. 异步与实时场景    | Event、BullMQ、Cache、WebSocket                | 通知、后台任务、缓存和实时状态更新 | 重试与幂等策略明确；异步失败可追踪                     |
 | 7. 生产化            | Testing、Lifecycle、Deployment                 | Docker、CI、优雅停机和部署         | 构建与测试自动化；部署、回滚和运行手册齐全             |
+| 8. 接口治理          | Swagger、Guard、Config                          | OpenAPI 契约和请求限流             | 文档可导出；超限请求可预期；分布式边界明确             |
 
 微服务不作为前置目标。只有当模块边界、异步事件和独立扩缩容需求已经通过单体实现得到验证后，再评估拆分。
 
@@ -229,9 +236,17 @@ docs(learning): 记录请求生命周期
 
 ### 迭代八：生产化运行闭环
 
-状态：进行中，OpenSpec 变更为 `productionize-task-service`。
+状态：已完成，归档变更为 `2026-09-17-productionize-task-service`。
 
 - 使用多阶段 Docker 构建和 `prisma migrate deploy` 启动入口。
 - 使用生产 Compose 管理 PostgreSQL 健康依赖、环境变量和自动重启。
 - 使用 CI 自动执行 lint、单元测试、集成测试、E2E 测试和构建。
 - 使用 Nest shutdown hooks 实现异步任务和数据库连接的优雅停机。
+
+### 迭代九：接口契约与入口保护
+
+状态：已完成，归档变更为 `2026-09-17-api-contract-and-rate-limits`。
+
+- 使用 Swagger UI 和 OpenAPI JSON 描述认证、项目、任务、通知和健康接口。
+- 使用全局 ThrottlerGuard 限制普通请求，并将注册/登录限制为每分钟 5 次。
+- 使用环境变量配置普通请求窗口和配额，非法配置在应用启动时被拒绝。
