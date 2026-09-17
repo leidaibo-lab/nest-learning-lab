@@ -1,6 +1,7 @@
 {
   "name": "nest-learning-lab",
   "version": "0.0.1",
+  "packageManager": "pnpm@10.33.4",
   "description": "",
   "author": "",
   "private": true,
@@ -13,6 +14,9 @@
     "postinstall": "prisma generate",
     "db:up": "docker compose up -d --wait postgres",
     "db:down": "docker compose down",
+    "docker:build": "docker build -t nest-learning-lab:local .",
+    "docker:up": "docker compose -f compose.production.yaml up -d --build",
+    "docker:down": "docker compose -f compose.production.yaml down",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
@@ -36,6 +40,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "fastify": "^5.12.0",
+    "prisma": "^6.19.3",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },
@@ -53,7 +58,6 @@
     "globals": "^17.0.0",
     "jest": "^30.0.0",
     "prettier": "^3.4.2",
-    "prisma": "^6.19.3",
     "source-map-support": "^0.5.21",
     "ts-jest": "^29.2.5",
     "ts-loader": "^9.5.2",

@@ -163,7 +163,17 @@ $ pnpm run test:cov
 
 ## Deployment
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+本项目的生产化学习入口是 `compose.production.yaml`。先准备 `POSTGRES_PASSWORD`、长度至少 32 的 `JWT_SECRET`，再启动完整服务：
+
+```bash
+export POSTGRES_PASSWORD='change-this-in-production'
+export JWT_SECRET='replace-with-a-random-secret-of-at-least-32-characters'
+pnpm docker:up
+```
+
+应用容器会先执行 `prisma migrate deploy`，迁移失败时不会启动 HTTP 进程；停止服务使用 `pnpm docker:down`。容器收到 `SIGTERM` 后，Nest 会触发通知处理器和 Prisma 的关闭钩子，等待活动数据库操作结束。
+
+本阶段的 CI 工作流位于 `.github/workflows/ci.yml`，会在 PostgreSQL 服务容器中执行迁移、lint、单元测试、集成测试、E2E 测试和生产构建。
 
 If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
 

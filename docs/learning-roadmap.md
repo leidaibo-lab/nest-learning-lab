@@ -47,7 +47,7 @@
 - `PATCH /tasks/:id/status` 在进入数据库前校验状态转换和请求版本。
 - Prisma Repository 使用 `$transaction` 同时更新 Task 和写入 TaskEvent。
 - 并发请求使用相同版本时只有一个成功，事件写入失败会回滚任务状态。
-- 当前尚未覆盖：认证授权、横切能力、异步流程和生产部署。下一步进入认证与授权。
+- 当前尚未覆盖：横切能力、异步流程和生产部署。下一步进入认证与授权。
 
 第五阶段现已完成，并归档为 `openspec/changes/archive/2026-09-09-add-auth-and-authorization/`：
 
@@ -56,7 +56,7 @@
 - 新增项目和项目成员模型，项目创建与 owner 成员写入在同一个 Prisma 事务中完成。
 - 任务必须属于项目；任务创建、查询和状态更新均要求项目成员，项目成员管理仅允许 owner。
 - 认证实现按成熟库方案收敛：Access Token 有效期 15 分钟，校验 issuer/audience，旧 `scrypt` 哈希在成功登录后自动升级为 Argon2id。
-- 当前尚未覆盖：刷新 Token、密码找回、OAuth、横切能力、异步流程和生产部署。
+- 当前尚未覆盖：刷新 Token、密码找回、OAuth、异步流程和生产部署。
 
 第六阶段本次增量已完成，并归档为 `2026-09-10-add-request-observability-and-health`：
 
@@ -65,12 +65,18 @@
 - 新增不要求认证的 `GET /health`，通过 Prisma 轻量查询检查数据库可用性。
 - 当前尚未覆盖：限流、OpenAPI、分布式追踪、缓存和实时通信。
 
-第七阶段本次增量已完成，并归档为 `2026-09-15-2026-09-15-add-async-task-notifications`：
+第七阶段的异步增量已完成，并归档为 `2026-09-15-2026-09-15-add-async-task-notifications`：
 
 - 使用 PostgreSQL outbox 在任务状态事务中可靠记录异步通知任务。
 - 使用 NestJS 后台 Provider 消费任务，学习有限重试、退避和幂等处理。
 - 新增认证后的 `GET /notifications` 查询当前用户的任务状态通知。
 - 本次暂不覆盖 Redis/BullMQ、WebSocket、缓存和外部推送渠道。
+
+第八阶段“生产化”正在进行，本次变更为 `productionize-task-service`：
+
+- 使用多阶段 Docker 镜像和 migration entrypoint 固定生产启动流程。
+- 使用 GitHub Actions 在 PostgreSQL 服务容器中执行完整质量门禁。
+- 使用 Nest shutdown hooks 验证 `SIGTERM`、后台通知处理器和 Prisma 连接的关闭顺序。
 
 ## 3. 主线业务模型
 
@@ -220,3 +226,12 @@ docs(learning): 记录请求生命周期
 - 在状态更新事务中写入通知 outbox，避免提交后进程崩溃造成异步工作丢失。
 - 使用后台 Processor 生成项目成员通知，失败时有限重试并保留错误原因。
 - 使用 `(userId, taskEventId)` 唯一约束保证重复消费不会重复通知。
+
+### 迭代八：生产化运行闭环
+
+状态：进行中，OpenSpec 变更为 `productionize-task-service`。
+
+- 使用多阶段 Docker 构建和 `prisma migrate deploy` 启动入口。
+- 使用生产 Compose 管理 PostgreSQL 健康依赖、环境变量和自动重启。
+- 使用 CI 自动执行 lint、单元测试、集成测试、E2E 测试和构建。
+- 使用 Nest shutdown hooks 实现异步任务和数据库连接的优雅停机。

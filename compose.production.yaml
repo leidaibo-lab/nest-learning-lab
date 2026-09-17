@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-nest_learning_lab}
+      POSTGRES_USER: ${POSTGRES_USER:-nest}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  app:
+    build: .
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-nest}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nest_learning_lab}?schema=public"
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_ISSUER: ${JWT_ISSUER:-nest-learning-lab}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-task-api}
+      JWT_ACCESS_TOKEN_TTL: ${JWT_ACCESS_TOKEN_TTL:-15m}
+      PORT: 3000
+    ports:
+      - '${APP_PORT:-3000}:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres-data:

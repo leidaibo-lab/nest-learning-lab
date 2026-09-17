@@ -1,0 +1,7 @@
+- [x] 1.1 增加生产化 proposal、spec、design 和任务清单
+- [x] 1.2 增加多阶段 Dockerfile、`.dockerignore` 和 migration entrypoint
+- [x] 1.3 增加生产 Compose 编排和 PostgreSQL 健康依赖
+- [x] 2.1 开启 Nest shutdown hooks，并补充 Prisma 生命周期注释
+- [x] 2.2 增加 GitHub Actions 的 PostgreSQL、迁移、测试和构建门禁
+- [x] 3.1 更新学习路线、README 和稳定能力规格
+- [x] 3.2 运行 lint、测试、构建、OpenSpec 校验和 diff 检查

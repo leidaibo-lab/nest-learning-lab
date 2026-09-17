@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: nest_learning_lab
+          POSTGRES_USER: nest
+          POSTGRES_PASSWORD: nest
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U nest -d nest_learning_lab"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://nest:nest@localhost:5433/nest_learning_lab?schema=public
+      JWT_SECRET: ci-only-secret-with-at-least-32-characters
+      JWT_ISSUER: nest-learning-lab
+      JWT_AUDIENCE: task-api
+      JWT_ACCESS_TOKEN_TTL: 15m
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm prisma:migrate:deploy
+      - run: pnpm exec eslint "src/**/*.ts" "test/**/*.ts"
+      - run: pnpm exec jest --runInBand
+      - run: pnpm test:integration
+      - run: pnpm exec jest --config ./test/jest-e2e.json --runInBand
+      - run: pnpm build
