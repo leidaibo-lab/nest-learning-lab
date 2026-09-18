@@ -4,6 +4,7 @@ export interface Project {
   id: string;
   name: string;
   ownerId: string;
+  tenantId: string;
   createdAt: string;
 }
 

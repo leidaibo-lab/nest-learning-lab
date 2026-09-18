@@ -29,8 +29,18 @@ export class AuthService {
   async register(input: CredentialsDto): Promise<AuthResponse> {
     const passwordHash = await this.passwordService.hash(input.password);
     try {
-      const user = await this.prisma.user.create({
-        data: { email: input.email, passwordHash },
+      const user = await this.prisma.$transaction(async (transaction) => {
+        const createdUser = await transaction.user.create({
+          data: { email: input.email, passwordHash },
+        });
+        const tenant = await transaction.tenant.create({
+          data: { name: `${input.email} 的默认组织` },
+        });
+        // 用户、默认租户和 owner 关系必须原子提交，避免出现“能登录但没有数据边界”的用户。
+        await transaction.tenantMember.create({
+          data: { tenantId: tenant.id, userId: createdUser.id, role: 'owner' },
+        });
+        return createdUser;
       });
       return this.toResponse(user.id, user.email);
     } catch (error) {

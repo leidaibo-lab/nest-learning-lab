@@ -6,9 +6,10 @@ import { PrismaTaskRepository } from './prisma-task.repository';
 import { TASK_REPOSITORY } from './task.repository';
 import { TasksController } from './tasks.controller';
 import { TasksService } from './tasks.service';
+import { TenantsModule } from '../tenants/tenants.module';
 
 @Module({
-  imports: [AuthModule, NotificationsModule],
+  imports: [AuthModule, NotificationsModule, TenantsModule],
   controllers: [TasksController],
   providers: [
     TasksService,

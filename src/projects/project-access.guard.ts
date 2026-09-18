@@ -13,6 +13,7 @@ type ProjectRequest = FastifyRequest & {
   user: AuthenticatedUser;
   projectRole?: ProjectRole;
   projectId?: string;
+  tenantId: string;
 };
 
 const uuidPattern =
@@ -24,6 +25,8 @@ export class ProjectAccessGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<ProjectRequest>();
+    // 项目成员关系只在当前租户内有效，不能把全局 UUID 当作授权依据。
+    const tenantId = request.tenantId;
     const projectId = await this.resolveProjectId(request);
     if (!projectId) {
       return true;
@@ -33,8 +36,9 @@ export class ProjectAccessGuard implements CanActivate {
       where: {
         projectId_userId: { projectId, userId: request.user.id },
       },
+      include: { project: { select: { tenantId: true } } },
     });
-    if (!membership) {
+    if (!membership || membership.project.tenantId !== tenantId) {
       throw new ForbiddenException('你不是该项目的成员');
     }
 
@@ -65,8 +69,13 @@ export class ProjectAccessGuard implements CanActivate {
       }
       const task = await this.prisma.task.findUnique({
         where: { id: params.id },
-        select: { projectId: true },
+        // 这里只解析候选项目；真正的成员授权仍由上面的复合租户检查完成。
+        select: {
+          projectId: true,
+          project: { select: { tenantId: true } },
+        },
       });
+      // 返回候选项目让统一成员检查产生 403；不把跨租户资源静默转换成“无项目”。
       return task?.projectId;
     }
 

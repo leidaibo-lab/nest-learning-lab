@@ -9,27 +9,59 @@ datasource db {
 }
 
 model User {
-  id             String          @id @default(uuid()) @db.Uuid
-  email          String          @unique @db.VarChar(254)
-  passwordHash   String          @map("password_hash") @db.VarChar(255)
-  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
-  ownedProjects  Project[]       @relation("ProjectOwner")
-  memberships    ProjectMember[]
-  notifications  Notification[]
+  id                String          @id @default(uuid()) @db.Uuid
+  email             String          @unique @db.VarChar(254)
+  passwordHash      String          @map("password_hash") @db.VarChar(255)
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  ownedProjects     Project[]       @relation("ProjectOwner")
+  memberships       ProjectMember[]
+  tenantMemberships TenantMember[]
+  notifications     Notification[]
 
   @@map("users")
 }
 
-model Project {
-  id          String          @id @default(uuid()) @db.Uuid
-  name        String          @db.VarChar(120)
-  ownerId     String          @map("owner_id") @db.Uuid
-  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
-  owner       User            @relation("ProjectOwner", fields: [ownerId], references: [id])
-  members     ProjectMember[]
-  tasks       Task[]
+model Tenant {
+  id            String            @id @default(uuid()) @db.Uuid
+  name          String            @db.VarChar(120)
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  members       TenantMember[]
+  projects      Project[]
+  events        TaskEvent[]
+  jobs          NotificationJob[]
+  notifications Notification[]
 
+  @@index([createdAt])
+  @@map("tenants")
+}
+
+model TenantMember {
+  tenantId  String   @map("tenant_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  role      String   @default("member") @db.VarChar(20)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, userId])
+  @@index([userId])
+  @@map("tenant_members")
+}
+
+model Project {
+  id        String          @id @default(uuid()) @db.Uuid
+  name      String          @db.VarChar(120)
+  ownerId   String          @map("owner_id") @db.Uuid
+  tenantId  String          @map("tenant_id") @db.Uuid
+  createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  owner     User            @relation("ProjectOwner", fields: [ownerId], references: [id])
+  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  members   ProjectMember[]
+  tasks     Task[]
+
+  @@unique([tenantId, id])
   @@index([ownerId])
+  @@index([tenantId, createdAt])
   @@map("projects")
 }
 
@@ -61,47 +93,56 @@ model Task {
 }
 
 model TaskEvent {
-  id         String   @id @default(uuid()) @db.Uuid
-  taskId     String   @db.Uuid
-  fromStatus String   @map("from_status") @db.VarChar(20)
-  toStatus   String   @map("to_status") @db.VarChar(20)
-  version    Int
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  id              String           @id @default(uuid()) @db.Uuid
+  taskId          String           @db.Uuid
+  tenantId        String           @map("tenant_id") @db.Uuid
+  fromStatus      String           @map("from_status") @db.VarChar(20)
+  toStatus        String           @map("to_status") @db.VarChar(20)
+  version         Int
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  task            Task             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   notificationJob NotificationJob?
-  notifications Notification[]
+  notifications   Notification[]
 
   @@unique([taskId, version])
   @@index([taskId, createdAt])
+  @@index([tenantId, createdAt])
   @@map("task_events")
 }
 
 model NotificationJob {
-  id          String   @id @default(uuid()) @db.Uuid
-  eventId     String   @unique @map("event_id") @db.Uuid
-  status      String   @default("pending") @db.VarChar(20)
-  attempts    Int      @default(0)
-  availableAt DateTime @default(now()) @map("available_at") @db.Timestamptz(3)
-  lastError   String?  @map("last_error") @db.VarChar(500)
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id          String    @id @default(uuid()) @db.Uuid
+  eventId     String    @unique @map("event_id") @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  status      String    @default("pending") @db.VarChar(20)
+  attempts    Int       @default(0)
+  availableAt DateTime  @default(now()) @map("available_at") @db.Timestamptz(3)
+  lastError   String?   @map("last_error") @db.VarChar(500)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
   event       TaskEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([status, availableAt])
+  @@index([tenantId, status, availableAt])
   @@map("notification_jobs")
 }
 
 model Notification {
-  id          String   @id @default(uuid()) @db.Uuid
-  userId      String   @map("user_id") @db.Uuid
-  taskEventId String   @map("task_event_id") @db.Uuid
-  kind        String   @db.VarChar(50)
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  taskEventId String    @map("task_event_id") @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  kind        String    @db.VarChar(50)
   payload     Json
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   taskEvent   TaskEvent @relation(fields: [taskEventId], references: [id], onDelete: Cascade)
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([userId, taskEventId])
   @@index([userId, createdAt])
+  @@index([tenantId, userId, createdAt])
   @@map("notifications")
 }

@@ -4,9 +4,10 @@ import { ProjectAccessGuard } from './project-access.guard';
 import { ProjectsController } from './projects.controller';
 import { ProjectsService } from './projects.service';
 import { RolesGuard } from './roles.guard';
+import { TenantsModule } from '../tenants/tenants.module';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, TenantsModule],
   controllers: [ProjectsController],
   providers: [ProjectsService, ProjectAccessGuard, RolesGuard],
 })

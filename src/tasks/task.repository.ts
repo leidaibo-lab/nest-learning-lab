@@ -3,12 +3,13 @@ import { Task, TaskStatus } from './task';
 export const TASK_REPOSITORY = Symbol('TASK_REPOSITORY');
 
 export interface TaskRepository {
-  save(task: Task): Promise<Task>;
-  findById(id: string): Promise<Task | undefined>;
+  save(task: Task, tenantId: string): Promise<Task>;
+  findById(id: string, tenantId: string): Promise<Task | undefined>;
   updateStatus(
     id: string,
     status: TaskStatus,
     expectedVersion: number,
+    tenantId: string,
   ): Promise<TaskUpdateResult>;
 }
 

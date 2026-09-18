@@ -4,9 +4,10 @@ import { NotificationProcessor } from './notification.processor';
 import { NotificationScheduler } from './notification.scheduler';
 import { NotificationsController } from './notifications.controller';
 import { NotificationsService } from './notifications.service';
+import { TenantsModule } from '../tenants/tenants.module';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, TenantsModule],
   controllers: [NotificationsController],
   providers: [
     NotificationsService,

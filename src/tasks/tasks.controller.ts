@@ -14,6 +14,7 @@ import {
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiHeader,
   ApiNotFoundResponse,
   ApiOperation,
   ApiParam,
@@ -26,11 +27,18 @@ import { CreateTaskDto } from './create-task.dto';
 import { Task } from './task';
 import { TasksService } from './tasks.service';
 import { UpdateTaskStatusDto } from './update-task-status.dto';
+import { CurrentTenant } from '../tenants/current-tenant.decorator';
+import { TenantContextGuard } from '../tenants/tenant-context.guard';
 
 @Controller('tasks')
-@UseGuards(JwtAuthGuard, ProjectAccessGuard)
+@UseGuards(JwtAuthGuard, TenantContextGuard, ProjectAccessGuard)
 @ApiTags('任务')
 @ApiBearerAuth()
+@ApiHeader({
+  name: 'x-tenant-id',
+  required: false,
+  description: '当前租户 UUID；多租户用户必须提供，单租户用户可省略',
+})
 export class TasksController {
   constructor(private readonly tasksService: TasksService) {}
 
@@ -40,8 +48,11 @@ export class TasksController {
   @ApiBadRequestResponse({ description: '请求参数非法' })
   @ApiForbiddenResponse({ description: '不是项目成员' })
   @ApiUnauthorizedResponse({ description: '未认证' })
-  create(@Body() input: CreateTaskDto): Promise<Task> {
-    return this.tasksService.create(input);
+  create(
+    @Body() input: CreateTaskDto,
+    @CurrentTenant() tenantId: string,
+  ): Promise<Task> {
+    return this.tasksService.create(input, tenantId);
   }
 
   @Get(':id')
@@ -50,8 +61,11 @@ export class TasksController {
   @ApiNotFoundResponse({ description: '任务不存在' })
   @ApiForbiddenResponse({ description: '不是项目成员' })
   @ApiUnauthorizedResponse({ description: '未认证' })
-  findById(@Param('id', new ParseUUIDPipe()) id: string): Promise<Task> {
-    return this.tasksService.findById(id);
+  findById(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentTenant() tenantId: string,
+  ): Promise<Task> {
+    return this.tasksService.findById(id, tenantId);
   }
 
   @Patch(':id/status')
@@ -63,11 +77,13 @@ export class TasksController {
   updateStatus(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() input: UpdateTaskStatusDto,
+    @CurrentTenant() tenantId: string,
   ): Promise<Task> {
     return this.tasksService.updateStatus(
       id,
       input.status,
       input.expectedVersion,
+      tenantId,
     );
   }
 }

@@ -76,7 +76,10 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
 
   private async claimNextJob() {
     const candidate = await this.prisma.notificationJob.findFirst({
-      where: { status: 'pending', availableAt: { lte: new Date() } },
+      where: {
+        status: 'pending',
+        availableAt: { lte: new Date() },
+      },
       orderBy: { createdAt: 'asc' },
     });
     if (!candidate) {
@@ -97,6 +100,7 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
     id: string;
     eventId: string;
     attempts: number;
+    tenantId: string;
   }) {
     try {
       const event = await this.prisma.taskEvent.findUnique({
@@ -106,18 +110,26 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
       if (!event) {
         throw new Error(`任务事件 ${job.eventId} 不存在`);
       }
+      if (event.tenantId !== job.tenantId) {
+        throw new Error('通知任务与任务事件的租户不一致');
+      }
 
       const members = await this.prisma.projectMember.findMany({
-        where: { projectId: event.task.projectId },
+        where: {
+          projectId: event.task.projectId,
+          project: { tenantId: job.tenantId },
+        },
         select: { userId: true },
       });
       await this.prisma.notification.createMany({
         data: members.map(({ userId }) => ({
           userId,
           taskEventId: event.id,
+          tenantId: job.tenantId,
           kind: 'task.status_changed',
           payload: {
             taskId: event.taskId,
+            tenantId: job.tenantId,
             fromStatus: event.fromStatus,
             toStatus: event.toStatus,
             version: event.version,

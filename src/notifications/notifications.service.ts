@@ -6,9 +6,9 @@ import { Notification } from './notification';
 export class NotificationsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listForUser(userId: string): Promise<Notification[]> {
+  async listForUser(userId: string, tenantId: string): Promise<Notification[]> {
     const notifications = await this.prisma.notification.findMany({
-      where: { userId },
+      where: { userId, tenantId },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -25,9 +25,11 @@ export class NotificationsService {
       return {
         id: notification.id,
         taskEventId: notification.taskEventId,
+        tenantId: notification.tenantId,
         kind: 'task.status_changed',
         payload: {
           taskId: this.readString(payload, 'taskId'),
+          tenantId: this.readString(payload, 'tenantId'),
           fromStatus: this.readString(payload, 'fromStatus'),
           toStatus: this.readString(payload, 'toStatus'),
           version: this.readNumber(payload, 'version'),

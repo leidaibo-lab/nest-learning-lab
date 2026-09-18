@@ -13,6 +13,7 @@ describe('Application (e2e)', () => {
   let app: NestFastifyApplication;
   let accessToken: string;
   let projectId: string;
+  let tenantId: string;
 
   async function createApplication(): Promise<NestFastifyApplication> {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -48,10 +49,19 @@ describe('Application (e2e)', () => {
       },
     });
     accessToken = registerResponse.json<{ accessToken: string }>().accessToken;
+    const tenantResponse = await app.inject({
+      method: 'GET',
+      url: '/tenants',
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    tenantId = tenantResponse.json<{ id: string }[]>()[0].id;
     const projectResponse = await app.inject({
       method: 'POST',
       url: '/projects',
-      headers: { authorization: `Bearer ${accessToken}` },
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        'x-tenant-id': tenantId,
+      },
       payload: { name: 'Learning project' },
     });
     projectId = projectResponse.json<{ id: string }>().id;
@@ -98,6 +108,7 @@ describe('Application (e2e)', () => {
         '/auth/login': expect.any(Object) as object,
         '/tasks': expect.any(Object) as object,
         '/notifications': expect.any(Object) as object,
+        '/tenants': expect.any(Object) as object,
         '/health': expect.any(Object) as object,
       }),
     );
@@ -205,6 +216,131 @@ describe('Application (e2e)', () => {
 
     expect(getResponse.statusCode).toBe(200);
     expect(getResponse.json<Task>()).toEqual(created);
+  });
+
+  it('lists my tenants and requires a selected tenant after creating another one', async () => {
+    const createTenantResponse = await app.inject({
+      method: 'POST',
+      url: '/tenants',
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { name: 'Second tenant' },
+    });
+    expect(createTenantResponse.statusCode).toBe(201);
+    const secondTenantId = createTenantResponse.json<{ id: string }>().id;
+
+    const tenantsResponse = await app.inject({
+      method: 'GET',
+      url: '/tenants',
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    expect(tenantsResponse.statusCode).toBe(200);
+    expect(tenantsResponse.json()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: tenantId, role: 'owner' }),
+        expect.objectContaining({ id: secondTenantId, role: 'owner' }),
+      ]),
+    );
+
+    const taskResponse = await app.inject({
+      method: 'POST',
+      url: '/tasks',
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        'x-tenant-id': tenantId,
+      },
+      payload: { projectId, title: 'Tenant-scoped task' },
+    });
+    const task = taskResponse.json<Task>();
+
+    const missingContextResponse = await app.inject({
+      method: 'GET',
+      url: `/tasks/${task.id}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    expect(missingContextResponse.statusCode).toBe(400);
+
+    const otherTenantResponse = await app.inject({
+      method: 'GET',
+      url: `/tasks/${task.id}`,
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        'x-tenant-id': secondTenantId,
+      },
+    });
+    expect(otherTenantResponse.statusCode).toBe(403);
+
+    const crossTenantCreateResponse = await app.inject({
+      method: 'POST',
+      url: '/tasks',
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        'x-tenant-id': secondTenantId,
+      },
+      payload: { projectId, title: 'Cross-tenant task' },
+    });
+    expect(crossTenantCreateResponse.statusCode).toBe(403);
+  });
+
+  it('scopes asynchronous notifications to the selected tenant', async () => {
+    const secondTenantResponse = await app.inject({
+      method: 'POST',
+      url: '/tenants',
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { name: 'Notification tenant' },
+    });
+    const secondTenantId = secondTenantResponse.json<{ id: string }>().id;
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/tasks',
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        'x-tenant-id': tenantId,
+      },
+      payload: { projectId, title: 'Tenant notification' },
+    });
+    const created = createResponse.json<Task>();
+    await app.inject({
+      method: 'PATCH',
+      url: `/tasks/${created.id}/status`,
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        'x-tenant-id': tenantId,
+      },
+      payload: { status: 'in_progress', expectedVersion: created.version },
+    });
+
+    let notifications: unknown[] = [];
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/notifications',
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+          'x-tenant-id': tenantId,
+        },
+      });
+      notifications = response.json<unknown[]>();
+      if (notifications.length === 1) break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]).toEqual(
+      expect.objectContaining({
+        tenantId,
+        payload: expect.objectContaining({ tenantId }) as object,
+      }),
+    );
+
+    const otherTenantNotifications = await app.inject({
+      method: 'GET',
+      url: '/notifications',
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        'x-tenant-id': secondTenantId,
+      },
+    });
+    expect(otherTenantNotifications.statusCode).toBe(200);
+    expect(otherTenantNotifications.json()).toEqual([]);
   });
 
   it('rejects a missing task title', async () => {
@@ -334,6 +470,7 @@ describe('Application (e2e)', () => {
         kind: 'task.status_changed',
         payload: {
           taskId: created.id,
+          tenantId,
           fromStatus: 'todo',
           toStatus: 'in_progress',
           version: 2,
@@ -458,7 +595,10 @@ describe('Application (e2e)', () => {
     const createResponse = await app.inject({
       method: 'POST',
       url: '/tasks',
-      headers: { authorization: `Bearer ${memberToken}` },
+      headers: {
+        authorization: `Bearer ${memberToken}`,
+        'x-tenant-id': tenantId,
+      },
       payload: { projectId, title: 'Member can read this task' },
     });
     expect(createResponse.statusCode).toBe(201);
@@ -466,7 +606,10 @@ describe('Application (e2e)', () => {
     const forbiddenInvite = await app.inject({
       method: 'POST',
       url: `/projects/${projectId}/members`,
-      headers: { authorization: `Bearer ${memberToken}` },
+      headers: {
+        authorization: `Bearer ${memberToken}`,
+        'x-tenant-id': tenantId,
+      },
       payload: { email: `another-${randomUUID()}@example.com` },
     });
     expect(forbiddenInvite.statusCode).toBe(403);

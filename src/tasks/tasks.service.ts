@@ -26,7 +26,7 @@ export class TasksService {
     private readonly notificationScheduler: NotificationScheduler,
   ) {}
 
-  async create(input: CreateTaskDto): Promise<Task> {
+  async create(input: CreateTaskDto, tenantId: string): Promise<Task> {
     const task: Task = {
       id: randomUUID(),
       projectId: input.projectId,
@@ -36,11 +36,11 @@ export class TasksService {
       createdAt: new Date().toISOString(),
     };
 
-    return this.taskRepository.save(task);
+    return this.taskRepository.save(task, tenantId);
   }
 
-  async findById(id: string): Promise<Task> {
-    const task = await this.taskRepository.findById(id);
+  async findById(id: string, tenantId: string): Promise<Task> {
+    const task = await this.taskRepository.findById(id, tenantId);
 
     if (!task) {
       throw new NotFoundException(`任务 ${id} 不存在`);
@@ -53,8 +53,9 @@ export class TasksService {
     id: string,
     status: TaskStatus,
     expectedVersion: number,
+    tenantId: string,
   ): Promise<Task> {
-    const current = await this.findById(id);
+    const current = await this.findById(id, tenantId);
 
     if (!allowedTransitions[current.status].includes(status)) {
       throw new BadRequestException(
@@ -70,6 +71,7 @@ export class TasksService {
       id,
       status,
       expectedVersion,
+      tenantId,
     );
 
     if (result.kind === 'not_found') {

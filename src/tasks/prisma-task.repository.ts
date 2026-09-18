@@ -8,7 +8,15 @@ import type { TaskRepository, TaskUpdateResult } from './task.repository';
 export class PrismaTaskRepository implements TaskRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async save(task: Task): Promise<Task> {
+  async save(task: Task, tenantId: string): Promise<Task> {
+    const project = await this.prisma.project.findFirst({
+      where: { id: task.projectId, tenantId },
+      select: { id: true },
+    });
+    if (!project) {
+      throw new Error('任务项目不属于当前租户');
+    }
+
     const saved = await this.prisma.task.create({
       data: {
         id: task.id,
@@ -23,8 +31,10 @@ export class PrismaTaskRepository implements TaskRepository {
     return this.toDomain(saved);
   }
 
-  async findById(id: string): Promise<Task | undefined> {
-    const task = await this.prisma.task.findUnique({ where: { id } });
+  async findById(id: string, tenantId: string): Promise<Task | undefined> {
+    const task = await this.prisma.task.findFirst({
+      where: { id, project: { tenantId } },
+    });
     return task ? this.toDomain(task) : undefined;
   }
 
@@ -32,9 +42,12 @@ export class PrismaTaskRepository implements TaskRepository {
     id: string,
     status: TaskStatus,
     expectedVersion: number,
+    tenantId: string,
   ): Promise<TaskUpdateResult> {
     return this.prisma.$transaction(async (transaction) => {
-      const current = await transaction.task.findUnique({ where: { id } });
+      const current = await transaction.task.findFirst({
+        where: { id, project: { tenantId } },
+      });
 
       if (!current) {
         return { kind: 'not_found' };
@@ -45,7 +58,7 @@ export class PrismaTaskRepository implements TaskRepository {
       }
 
       const updateResult = await transaction.task.updateMany({
-        where: { id, version: expectedVersion },
+        where: { id, version: expectedVersion, project: { tenantId } },
         data: {
           status,
           version: { increment: 1 },
@@ -60,13 +73,14 @@ export class PrismaTaskRepository implements TaskRepository {
       const event = await transaction.taskEvent.create({
         data: {
           taskId: id,
+          tenantId,
           fromStatus: current.status,
           toStatus: status,
           version: expectedVersion + 1,
         },
       });
       await transaction.notificationJob.create({
-        data: { eventId: event.id },
+        data: { eventId: event.id, tenantId },
       });
 
       const updated = await transaction.task.findUnique({ where: { id } });

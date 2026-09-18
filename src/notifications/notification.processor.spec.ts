@@ -26,6 +26,7 @@ describe('NotificationProcessor', () => {
       id: 'job-1',
       eventId: 'event-1',
       attempts: 0,
+      tenantId: 'tenant-1',
       createdAt: new Date(),
     };
     const event = {
@@ -34,6 +35,7 @@ describe('NotificationProcessor', () => {
       fromStatus: 'todo',
       toStatus: 'in_progress',
       version: 2,
+      tenantId: 'tenant-1',
       task: { projectId: 'project-1' },
     };
     const client = prisma as unknown as {
@@ -60,8 +62,16 @@ describe('NotificationProcessor', () => {
 
     expect(client.notification.createMany).toHaveBeenCalledWith({
       data: [
-        expect.objectContaining({ userId: 'user-1', taskEventId: 'event-1' }),
-        expect.objectContaining({ userId: 'user-2', taskEventId: 'event-1' }),
+        expect.objectContaining({
+          userId: 'user-1',
+          taskEventId: 'event-1',
+          tenantId: 'tenant-1',
+        }),
+        expect.objectContaining({
+          userId: 'user-2',
+          taskEventId: 'event-1',
+          tenantId: 'tenant-1',
+        }),
       ],
       skipDuplicates: true,
     });
@@ -85,6 +95,7 @@ describe('NotificationProcessor', () => {
       id: 'job-1',
       eventId: 'event-1',
       attempts: 0,
+      tenantId: 'tenant-1',
       createdAt: new Date(),
     });
     client.notificationJob.findFirst.mockResolvedValueOnce(undefined);
@@ -118,6 +129,7 @@ describe('NotificationProcessor', () => {
       id: 'job-1',
       eventId: 'event-1',
       attempts: 2,
+      tenantId: 'tenant-1',
       createdAt: new Date(),
     });
     client.notificationJob.findFirst.mockResolvedValueOnce(undefined);

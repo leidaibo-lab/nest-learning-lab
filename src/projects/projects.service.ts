@@ -13,10 +13,14 @@ import { Project, ProjectMember, ProjectRole } from './project';
 export class ProjectsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(input: CreateProjectDto, ownerId: string): Promise<Project> {
+  async create(
+    input: CreateProjectDto,
+    ownerId: string,
+    tenantId: string,
+  ): Promise<Project> {
     const project = await this.prisma.$transaction(async (transaction) => {
       const created = await transaction.project.create({
-        data: { name: input.name, ownerId },
+        data: { name: input.name, ownerId, tenantId },
       });
       await transaction.projectMember.create({
         data: { projectId: created.id, userId: ownerId, role: 'owner' },
@@ -31,11 +35,16 @@ export class ProjectsService {
     projectId: string,
     input: AddMemberDto,
     ownerId: string,
+    tenantId: string,
   ): Promise<ProjectMember> {
     const ownerMembership = await this.prisma.projectMember.findUnique({
       where: { projectId_userId: { projectId, userId: ownerId } },
+      include: { project: { select: { tenantId: true } } },
     });
-    if (ownerMembership?.role !== 'owner') {
+    if (
+      ownerMembership?.role !== 'owner' ||
+      ownerMembership.project.tenantId !== tenantId
+    ) {
       throw new ForbiddenException('只有项目所有者可以管理成员');
     }
 
@@ -47,8 +56,16 @@ export class ProjectsService {
     }
 
     try {
-      const member = await this.prisma.projectMember.create({
-        data: { projectId, userId: user.id, role: 'member' },
+      const member = await this.prisma.$transaction(async (transaction) => {
+        // 项目成员必须同时成为租户成员，后续租户上下文才能稳定约束其访问范围。
+        await transaction.tenantMember.upsert({
+          where: { tenantId_userId: { tenantId, userId: user.id } },
+          update: {},
+          create: { tenantId, userId: user.id, role: 'member' },
+        });
+        return transaction.projectMember.create({
+          data: { projectId, userId: user.id, role: 'member' },
+        });
       });
       return this.toMember(member.projectId, member.userId, member.role);
     } catch (error) {
@@ -66,12 +83,14 @@ export class ProjectsService {
     id: string;
     name: string;
     ownerId: string;
+    tenantId: string;
     createdAt: Date;
   }): Project {
     return {
       id: project.id,
       name: project.name,
       ownerId: project.ownerId,
+      tenantId: project.tenantId,
       createdAt: project.createdAt.toISOString(),
     };
   }
