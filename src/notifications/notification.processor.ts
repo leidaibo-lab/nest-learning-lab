@@ -14,6 +14,9 @@ const RETRY_DELAYS_MS = [1000, 2000];
 // 这不是容量承诺，正式环境需按处理耗时分位数、数据库压力和故障演练重新校准。
 const LEASE_DURATION_MS = 30_000;
 const LEASE_RENEW_INTERVAL_MS = 10_000;
+// 单次只处理有限任务后主动让出事件循环，避免 backlog 下一个 Provider 无限 drain。
+// 这是应用内的协作式背压，不代表队列容量；批次大小仍需通过压测和数据库压力重新校准。
+const MAX_JOBS_PER_RUN = 50;
 
 @Injectable()
 export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
@@ -65,17 +68,25 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
     }
 
     this.processing = true;
+    let processedJobs = 0;
+    let needsContinuation = false;
     try {
-      while (!this.closed) {
+      while (!this.closed && processedJobs < MAX_JOBS_PER_RUN) {
         const job = await this.claimNextJob();
         if (!job) {
           return;
         }
 
         await this.processJob(job);
+        processedJobs += 1;
       }
+      needsContinuation = !this.closed && processedJobs === MAX_JOBS_PER_RUN;
     } finally {
       this.processing = false;
+      if (needsContinuation) {
+        // 下一批通过 setImmediate 排队，给 HTTP 请求和关闭信号留下调度机会。
+        this.schedule();
+      }
     }
   }
 

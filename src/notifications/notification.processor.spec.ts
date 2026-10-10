@@ -276,4 +276,53 @@ describe('NotificationProcessor', () => {
     expect(updateCalls[2][0].where.status).toBe('processing');
     expect(updateCalls[2][0].where.leaseToken).toEqual(expect.any(String));
   });
+
+  it('yields after one bounded batch and schedules the next batch', async () => {
+    jest.useFakeTimers();
+    try {
+      const { prisma, processor } = createProcessor({});
+      const client = prisma as unknown as {
+        notificationJob: {
+          findFirst: jest.Mock;
+          updateMany: jest.Mock;
+        };
+        taskEvent: { findUnique: jest.Mock };
+        projectMember: { findMany: jest.Mock };
+        notification: { createMany: jest.Mock };
+      };
+      const jobs = Array.from({ length: 51 }, (_, index) => ({
+        id: `job-${index}`,
+        eventId: `event-${index}`,
+        attempts: 0,
+        tenantId: 'tenant-1',
+        createdAt: new Date(),
+      }));
+      for (const job of jobs.slice(0, 50)) {
+        client.notificationJob.findFirst.mockResolvedValueOnce(job);
+      }
+      client.notificationJob.findFirst.mockResolvedValue(undefined);
+      client.notificationJob.updateMany.mockResolvedValue({ count: 1 });
+      client.taskEvent.findUnique.mockImplementation(
+        (args: { where: { id: string } }) =>
+          Promise.resolve({
+            id: args.where.id,
+            taskId: 'task-1',
+            fromStatus: 'todo',
+            toStatus: 'done',
+            version: 2,
+            tenantId: 'tenant-1',
+            task: { projectId: 'project-1' },
+          }),
+      );
+      client.projectMember.findMany.mockResolvedValue([]);
+
+      await processor.processPending();
+
+      expect(client.notificationJob.findFirst).toHaveBeenCalledTimes(50);
+      expect(jest.getTimerCount()).toBe(1);
+    } finally {
+      jest.clearAllTimers();
+      jest.useRealTimers();
+    }
+  });
 });
