@@ -370,3 +370,5 @@ docs(learning): 记录请求生命周期
 
 - `NotificationProcessor` 使用 `MAX_JOBS_PER_RUN=50` 限制单批次处理，并在批次耗尽后异步安排续批。
 - 批次边界单元测试已覆盖；下一步通过 backlog、处理耗时、数据库压力和停机延迟校准参数。
+
+项目逻辑、流程与运行时观测图统一见[可视化文档索引](diagrams/README.md)。
