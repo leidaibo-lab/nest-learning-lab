@@ -244,6 +244,134 @@ describe('PrismaTaskRepository (integration)', () => {
     ).resolves.toBe(1);
   });
 
+  it('recovers an expired processing lease without duplicating notifications', async () => {
+    const task: Task = {
+      id: randomUUID(),
+      projectId,
+      title: 'Learn lease recovery',
+      status: 'todo',
+      version: 1,
+      createdAt: new Date().toISOString(),
+    };
+    await repository.save(task, tenantId);
+    await expect(
+      repository.updateStatus(task.id, 'in_progress', 1, tenantId),
+    ).resolves.toMatchObject({ kind: 'updated' });
+
+    await prisma.notificationJob.updateMany({
+      where: { event: { taskId: task.id } },
+      data: {
+        status: 'processing',
+        leaseUntil: new Date(Date.now() - 1_000),
+      },
+    });
+
+    const processor = new NotificationProcessor(prisma);
+    await processor.processPending();
+
+    await expect(
+      prisma.notificationJob.findFirst({
+        where: { event: { taskId: task.id } },
+      }),
+    ).resolves.toMatchObject({ status: 'completed', leaseUntil: null });
+    await expect(
+      prisma.notification.count({ where: { taskEvent: { taskId: task.id } } }),
+    ).resolves.toBe(1);
+  });
+
+  it('does not reclaim a processing job with an active lease', async () => {
+    const task: Task = {
+      id: randomUUID(),
+      projectId,
+      title: 'Learn active lease ownership',
+      status: 'todo',
+      version: 1,
+      createdAt: new Date().toISOString(),
+    };
+    await repository.save(task, tenantId);
+    await expect(
+      repository.updateStatus(task.id, 'in_progress', 1, tenantId),
+    ).resolves.toMatchObject({ kind: 'updated' });
+
+    await prisma.notificationJob.updateMany({
+      where: { event: { taskId: task.id } },
+      data: {
+        status: 'processing',
+        leaseUntil: new Date(Date.now() + 30_000),
+      },
+    });
+
+    const processor = new NotificationProcessor(prisma);
+    await processor.processPending();
+
+    await expect(
+      prisma.notificationJob.findFirst({
+        where: { event: { taskId: task.id } },
+      }),
+    ).resolves.toMatchObject({ status: 'processing' });
+    await expect(
+      prisma.notification.count({ where: { taskEvent: { taskId: task.id } } }),
+    ).resolves.toBe(0);
+  });
+
+  it('does not let a stale lease token overwrite an active job', async () => {
+    const task: Task = {
+      id: randomUUID(),
+      projectId,
+      title: 'Learn lease fencing',
+      status: 'todo',
+      version: 1,
+      createdAt: new Date().toISOString(),
+    };
+    await repository.save(task, tenantId);
+    await expect(
+      repository.updateStatus(task.id, 'in_progress', 1, tenantId),
+    ).resolves.toMatchObject({ kind: 'updated' });
+
+    const job = await prisma.notificationJob.findFirstOrThrow({
+      where: { event: { taskId: task.id } },
+    });
+    const staleToken = randomUUID();
+    const activeToken = randomUUID();
+    await prisma.notificationJob.update({
+      where: { id: job.id },
+      data: {
+        status: 'processing',
+        leaseToken: activeToken,
+        leaseUntil: new Date(Date.now() + 30_000),
+      },
+    });
+
+    const processor = new NotificationProcessor(prisma);
+    await (
+      processor as unknown as {
+        processJob(input: {
+          id: string;
+          eventId: string;
+          attempts: number;
+          tenantId: string;
+          leaseToken: string;
+        }): Promise<void>;
+      }
+    ).processJob({
+      id: job.id,
+      eventId: job.eventId,
+      attempts: 1,
+      tenantId,
+      leaseToken: staleToken,
+    });
+
+    await expect(
+      prisma.notificationJob.findUnique({ where: { id: job.id } }),
+    ).resolves.toMatchObject({
+      status: 'processing',
+      leaseToken: activeToken,
+    });
+    await expect(
+      prisma.notification.count({ where: { taskEvent: { taskId: task.id } } }),
+    ).resolves.toBe(0);
+  });
+
   afterAll(async () => {
     await module.close();
   });

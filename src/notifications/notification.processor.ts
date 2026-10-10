@@ -4,11 +4,16 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { Prisma } from '../../generated/prisma';
 import { PrismaService } from '../database/prisma.service';
 
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAYS_MS = [1000, 2000];
+// 当前学习假设是轻量通知可在 30 秒内完成，10 秒续租为事件循环暂停或数据库抖动预留余量。
+// 这不是容量承诺，正式环境需按处理耗时分位数、数据库压力和故障演练重新校准。
+const LEASE_DURATION_MS = 30_000;
+const LEASE_RENEW_INTERVAL_MS = 10_000;
 
 @Injectable()
 export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
@@ -75,10 +80,13 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
   }
 
   private async claimNextJob() {
+    const now = new Date();
     const candidate = await this.prisma.notificationJob.findFirst({
       where: {
-        status: 'pending',
-        availableAt: { lte: new Date() },
+        OR: [
+          { status: 'pending', availableAt: { lte: now } },
+          { status: 'processing', leaseUntil: { lte: now } },
+        ],
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -86,13 +94,27 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
       return undefined;
     }
 
-    // 条件更新同时承担“抢占”作用；多个应用实例竞争时只有一个能获得该任务。
+    // 租约把“当前由谁处理”持久化到数据库，实例崩溃后其他实例才能判断何时恢复。
+    // findFirst 只是缩小候选范围，条件更新才是多实例竞争时的最终仲裁。
+    const leaseToken = randomUUID();
+    const leaseUntil = new Date(now.getTime() + LEASE_DURATION_MS);
     const claimed = await this.prisma.notificationJob.updateMany({
-      where: { id: candidate.id, status: 'pending' },
-      data: { status: 'processing', attempts: { increment: 1 } },
+      where: {
+        id: candidate.id,
+        OR: [
+          { status: 'pending', availableAt: { lte: now } },
+          { status: 'processing', leaseUntil: { lte: now } },
+        ],
+      },
+      data: {
+        status: 'processing',
+        attempts: { increment: 1 },
+        leaseToken,
+        leaseUntil,
+      },
     });
     return claimed.count === 1
-      ? { ...candidate, attempts: candidate.attempts + 1 }
+      ? { ...candidate, attempts: candidate.attempts + 1, leaseToken }
       : undefined;
   }
 
@@ -101,7 +123,16 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
     eventId: string;
     attempts: number;
     tenantId: string;
+    leaseToken: string;
   }) {
+    // 心跳只延长仍属于本次尝试的租约；令牌变化时，旧实例不能继续续租。
+    const renewalTimer = setInterval(() => {
+      void this.renewLease(job).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : '未知错误';
+        this.logger.warn(`通知任务 ${job.id} 租约续期失败: ${message}`);
+      });
+    }, LEASE_RENEW_INTERVAL_MS);
+
     try {
       const event = await this.prisma.taskEvent.findUnique({
         where: { id: job.eventId },
@@ -121,6 +152,9 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
         },
         select: { userId: true },
       });
+      if (!(await this.renewLease(job))) {
+        throw new Error('通知任务租约已失效，放弃本次处理结果');
+      }
       await this.prisma.notification.createMany({
         data: members.map(({ userId }) => ({
           userId,
@@ -137,31 +171,80 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
         })),
         skipDuplicates: true,
       });
-      await this.prisma.notificationJob.update({
-        where: { id: job.id },
-        data: { status: 'completed', lastError: null },
+      const completed = await this.prisma.notificationJob.updateMany({
+        // 只有当前令牌仍持有未过期租约，才能提交终态，形成处理权围栏。
+        where: {
+          id: job.id,
+          status: 'processing',
+          leaseToken: job.leaseToken,
+          leaseUntil: { gt: new Date() },
+        },
+        data: {
+          status: 'completed',
+          leaseToken: null,
+          leaseUntil: null,
+          lastError: null,
+        },
       });
+      if (completed.count !== 1) {
+        this.logger.warn(
+          `通知任务 ${job.id} 已失去租约，忽略过期实例的完成结果`,
+        );
+      }
     } catch (error) {
       await this.recordFailure(job, error);
+    } finally {
+      clearInterval(renewalTimer);
     }
   }
 
+  private async renewLease(job: {
+    id: string;
+    leaseToken: string;
+  }): Promise<boolean> {
+    const now = new Date();
+    const renewed = await this.prisma.notificationJob.updateMany({
+      where: {
+        id: job.id,
+        status: 'processing',
+        leaseToken: job.leaseToken,
+        leaseUntil: { gt: now },
+      },
+      data: {
+        leaseUntil: new Date(now.getTime() + LEASE_DURATION_MS),
+      },
+    });
+    return renewed.count === 1;
+  }
+
   private async recordFailure(
-    job: { id: string; attempts: number },
+    job: { id: string; attempts: number; leaseToken: string },
     error: unknown,
   ): Promise<void> {
     const message = error instanceof Error ? error.message : '未知通知处理错误';
     const exhausted = job.attempts >= MAX_ATTEMPTS;
     const delay = RETRY_DELAYS_MS[job.attempts - 1] ?? RETRY_DELAYS_MS.at(-1)!;
 
-    await this.prisma.notificationJob.update({
-      where: { id: job.id },
+    const failed = await this.prisma.notificationJob.updateMany({
+      // 旧实例即使稍后恢复，也不能把新实例的处理再次改成 pending/failed。
+      where: {
+        id: job.id,
+        status: 'processing',
+        leaseToken: job.leaseToken,
+        leaseUntil: { gt: new Date() },
+      },
       data: {
         status: exhausted ? 'failed' : 'pending',
+        leaseToken: null,
+        leaseUntil: null,
         availableAt: new Date(Date.now() + delay),
         lastError: message.slice(0, 500),
       },
     });
+    if (failed.count !== 1) {
+      this.logger.warn(`通知任务 ${job.id} 已失去租约，忽略过期实例的失败结果`);
+      return;
+    }
     if (!exhausted && !this.closed) {
       // 只有可重试任务才设置下一次唤醒，避免失败任务形成无间隔的忙循环。
       this.retryTimer = setTimeout(() => {

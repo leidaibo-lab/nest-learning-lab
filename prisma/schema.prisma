@@ -118,6 +118,9 @@ model NotificationJob {
   status      String    @default("pending") @db.VarChar(20)
   attempts    Int       @default(0)
   availableAt DateTime  @default(now()) @map("available_at") @db.Timestamptz(3)
+  // 令牌用于区分不同处理尝试，防止过期实例续租或覆盖新实例的结果。
+  leaseToken  String?   @map("lease_token") @db.Uuid
+  leaseUntil  DateTime? @map("lease_until") @db.Timestamptz(3)
   lastError   String?   @map("last_error") @db.VarChar(500)
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -125,6 +128,7 @@ model NotificationJob {
   tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([status, availableAt])
+  @@index([status, leaseUntil])
   @@index([tenantId, status, availableAt])
   @@map("notification_jobs")
 }
