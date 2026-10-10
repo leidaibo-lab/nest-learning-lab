@@ -91,6 +91,32 @@ describe('Application (e2e)', () => {
     });
   });
 
+  it('exposes a liveness probe without requiring the database check', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/health/live',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      status: 'ok',
+      checks: { process: 'up' },
+    });
+  });
+
+  it('exposes a readiness probe for traffic admission', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/health/ready',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      status: 'ok',
+      checks: { database: 'up' },
+    });
+  });
+
   it('exposes an OpenAPI document for the HTTP contract', async () => {
     const response = await app.inject({
       method: 'GET',
@@ -110,6 +136,8 @@ describe('Application (e2e)', () => {
         '/notifications': expect.any(Object) as object,
         '/tenants': expect.any(Object) as object,
         '/health': expect.any(Object) as object,
+        '/health/live': expect.any(Object) as object,
+        '/health/ready': expect.any(Object) as object,
       }),
     );
     expect(document.components?.securitySchemes).toEqual(

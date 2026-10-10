@@ -20,6 +20,9 @@ flowchart TD
     I --> O[本批最多 50 个任务]
     O --> P[setImmediate 让出事件循环]
     P --> C
+    S[SIGTERM / draining] -.停止续批与新认领.-> C
+    C -.查询异常.-> R[延迟重试]
+    R --> C
 ```
 
 ## 状态机
@@ -42,6 +45,7 @@ stateDiagram-v2
 - 通知写入依赖 `(userId, taskEventId)` 唯一约束和 `skipDuplicates` 实现幂等。
 - `MAX_JOBS_PER_RUN = 50` 和 `setImmediate` 是应用内协作式背压，不是吞吐或容量承诺。
 - 当前固定租约 30 秒、续期间隔 10 秒；正式容量结论仍需要 backlog、处理耗时和数据库压力证据。
+- 停机排空只允许当前 `processJob` 收尾，不再认领下一任务；若进程被强制终止，后续实例依靠租约过期恢复。
 
 ## 代码与规格
 
@@ -50,3 +54,4 @@ stateDiagram-v2
 - 当前稳定规格：[`openspec/specs/task-notifications/spec.md`](../../openspec/specs/task-notifications/spec.md)
 - 租约续期设计：[`openspec/changes/2026-10-10-notification-lease-renewal/design.md`](../../openspec/changes/2026-10-10-notification-lease-renewal/design.md)
 - 背压设计：[`openspec/changes/2026-10-10-notification-throughput-backpressure/design.md`](../../openspec/changes/2026-10-10-notification-throughput-backpressure/design.md)
+- 停机排空设计：[`openspec/changes/shutdown-drain/design.md`](../../openspec/changes/shutdown-drain/design.md)

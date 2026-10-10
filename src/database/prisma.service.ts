@@ -1,12 +1,9 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaClient } from '../../generated/prisma';
 
 @Injectable()
-export class PrismaService
-  extends PrismaClient
-  implements OnModuleInit, OnModuleDestroy
-{
+export class PrismaService extends PrismaClient implements OnModuleDestroy {
   constructor(configService: ConfigService) {
     super({
       datasources: {
@@ -17,13 +14,8 @@ export class PrismaService
     });
   }
 
-  async onModuleInit(): Promise<void> {
-    // Prisma 在应用开始接收请求前建立连接；启动失败会让容器直接退出，交给编排器重启。
-    await this.$connect();
-  }
-
   async onModuleDestroy(): Promise<void> {
-    // Nest 关闭应用时调用此钩子，确保连接池在进程退出前释放完毕。
+    // Prisma 在首次查询时懒连接；关闭时统一释放可能已经建立的连接池。
     await this.$disconnect();
   }
 }

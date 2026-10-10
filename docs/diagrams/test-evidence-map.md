@@ -10,7 +10,7 @@
 | 异步通知、重试和幂等 | `NotificationProcessor` | `openspec/specs/task-notifications/spec.md` | `src/notifications/notification.processor.spec.ts`、`test/prisma-task.repository.integration-spec.ts` |
 | 存活和就绪探针 | `HealthController`、`HealthService` | `openspec/changes/2026-10-10-health-probes/` | `src/health/health.service.spec.ts`、`test/app.e2e-spec.ts` |
 | OpenAPI 契约 | `src/openapi.ts`、各 Controller 元数据 | `openspec/specs/api-contract/spec.md` | `test/app.e2e-spec.ts` |
-| 优雅停机和后台任务关闭 | `main.ts`、`NotificationProcessor`、`PrismaService` | `openspec/specs/production-runtime/spec.md` | 生产运行测试与 CI 验证 |
+| 优雅停机、流量摘除和后台任务关闭 | `ApplicationLifecycleService`、`NotificationProcessor`、`PrismaService` | `openspec/changes/shutdown-drain/` | `src/lifecycle/application-lifecycle.service.spec.ts`、`src/health/health.service.spec.ts`、`src/notifications/notification.processor.spec.ts` |
 
 ## 阅读规则
 

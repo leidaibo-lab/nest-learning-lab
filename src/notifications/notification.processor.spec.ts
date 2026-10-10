@@ -1,4 +1,5 @@
 import { PrismaService } from '../database/prisma.service';
+import { ApplicationLifecycleService } from '../lifecycle/application-lifecycle.service';
 import { NotificationProcessor } from './notification.processor';
 
 describe('NotificationProcessor', () => {
@@ -324,5 +325,20 @@ describe('NotificationProcessor', () => {
       jest.clearAllTimers();
       jest.useRealTimers();
     }
+  });
+
+  it('does not claim new jobs after shutdown starts', async () => {
+    const { prisma } = createProcessor({});
+    const lifecycle = new ApplicationLifecycleService();
+    const processor = new NotificationProcessor(prisma, lifecycle);
+    const client = prisma as unknown as {
+      notificationJob: { findFirst: jest.Mock };
+    };
+
+    lifecycle.beforeApplicationShutdown('SIGTERM');
+
+    await processor.processPending();
+
+    expect(client.notificationJob.findFirst).not.toHaveBeenCalled();
   });
 });

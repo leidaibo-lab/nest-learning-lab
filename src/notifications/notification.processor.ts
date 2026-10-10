@@ -3,10 +3,12 @@ import {
   Logger,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '../../generated/prisma';
 import { PrismaService } from '../database/prisma.service';
+import { ApplicationLifecycleService } from '../lifecycle/application-lifecycle.service';
 
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAYS_MS = [1000, 2000];
@@ -14,6 +16,7 @@ const RETRY_DELAYS_MS = [1000, 2000];
 // 这不是容量承诺，正式环境需按处理耗时分位数、数据库压力和故障演练重新校准。
 const LEASE_DURATION_MS = 30_000;
 const LEASE_RENEW_INTERVAL_MS = 10_000;
+const PROCESSOR_ERROR_RETRY_DELAY_MS = 1_000;
 // 单次只处理有限任务后主动让出事件循环，避免 backlog 下一个 Provider 无限 drain。
 // 这是应用内的协作式背压，不代表队列容量；批次大小仍需通过压测和数据库压力重新校准。
 const MAX_JOBS_PER_RUN = 50;
@@ -26,7 +29,10 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
   private retryTimer?: NodeJS.Timeout;
   private activeRun?: Promise<void>;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly lifecycle?: ApplicationLifecycleService,
+  ) {}
 
   onModuleInit(): void {
     // 启动时先扫描上次进程退出前留下的 pending 任务，避免异步工作只依赖内存。
@@ -38,32 +44,38 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
     if (this.retryTimer) {
       clearTimeout(this.retryTimer);
     }
-    // 等待正在执行的数据库操作结束，再由 PrismaModule 断开连接。
-    await this.activeRun;
+    // 等待正在执行的数据库操作结束；后台循环错误已记录并安排重试，不应阻断 Prisma 释放连接。
+    await this.activeRun?.catch(() => undefined);
   }
 
   schedule(): void {
-    if (this.closed || this.processing) {
+    if (this.isDraining() || this.closed || this.processing) {
       return;
     }
 
     // setImmediate 将通知处理移出当前 HTTP 调用栈，使状态更新响应不等待通知写入。
     setImmediate(() => {
-      if (this.closed) {
+      if (this.isDraining() || this.closed) {
         return;
       }
       const run = this.processPending();
       this.activeRun = run;
-      void run.finally(() => {
-        if (this.activeRun === run) {
-          this.activeRun = undefined;
-        }
-      });
+      void run
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : '未知错误';
+          this.logger.warn(`通知处理循环失败，将延迟重试: ${message}`);
+          this.scheduleProcessorRetry();
+        })
+        .finally(() => {
+          if (this.activeRun === run) {
+            this.activeRun = undefined;
+          }
+        });
     });
   }
 
   async processPending(): Promise<void> {
-    if (this.closed || this.processing) {
+    if (this.isDraining() || this.closed || this.processing) {
       return;
     }
 
@@ -71,7 +83,11 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
     let processedJobs = 0;
     let needsContinuation = false;
     try {
-      while (!this.closed && processedJobs < MAX_JOBS_PER_RUN) {
+      while (
+        !this.isDraining() &&
+        !this.closed &&
+        processedJobs < MAX_JOBS_PER_RUN
+      ) {
         const job = await this.claimNextJob();
         if (!job) {
           return;
@@ -80,7 +96,10 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
         await this.processJob(job);
         processedJobs += 1;
       }
-      needsContinuation = !this.closed && processedJobs === MAX_JOBS_PER_RUN;
+      needsContinuation =
+        !this.isDraining() &&
+        !this.closed &&
+        processedJobs === MAX_JOBS_PER_RUN;
     } finally {
       this.processing = false;
       if (needsContinuation) {
@@ -88,6 +107,22 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
         this.schedule();
       }
     }
+  }
+
+  private isDraining(): boolean {
+    return this.lifecycle?.isDraining() ?? false;
+  }
+
+  private scheduleProcessorRetry(): void {
+    if (this.closed || this.isDraining() || this.retryTimer) {
+      return;
+    }
+
+    // 依赖故障时延迟重试，避免后台循环把数据库不可用放大成忙循环或未处理异常。
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = undefined;
+      this.schedule();
+    }, PROCESSOR_ERROR_RETRY_DELAY_MS);
   }
 
   private async claimNextJob() {
