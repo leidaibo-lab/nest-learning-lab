@@ -21,6 +21,8 @@ proposal.md -> specs/<capability>/spec.md -> design.md -> tasks.md
 
 ## 开始一个变更
 
+学习增量先按 [学习路线中的场景决策流程](../docs/learning-roadmap.md)明确用户价值、约束与未知假设，再将行为写入 proposal/specs，将方案比较、取舍和演进条件写入 design。无需另建重复的场景卡文件；同一组判断可以直接保存在对应工件中。机制实验仅在它能够验证关键假设时纳入 tasks。
+
 ```bash
 openspec new change establish-task-module
 openspec status --change establish-task-module

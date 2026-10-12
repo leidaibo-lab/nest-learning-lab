@@ -16,6 +16,7 @@
 - 开始工作前使用 `git status`、`git log`、`git diff` 和代码检索确认当前状态，通过变更提取关键上下文。
 - 行为新增或变更采用 OpenSpec `spec-driven` 流程；先明确 WHY 和 WHAT，再设计 HOW 和实施任务。
 - 优先沿任务管理业务主线完成可验证的纵向增量，不创建互不关联的演示代码。
+- 学习增量以业务场景和方案判断为入口，执行方式与完成标准统一遵循 `docs/learning-roadmap.md` 的“业务场景驱动的学习方式”；机制实验用于验证关键假设。
 - 保持 NestJS 模块边界清晰，通过 Provider 和 Repository 边界隔离业务逻辑与基础设施。
 - 测试范围与风险匹配：业务规则使用单元测试，基础设施边界使用集成测试，HTTP 契约使用 Fastify E2E 测试。
 - 修改完成后运行适用的 lint、测试和构建命令，并通过 `git diff --check` 与 `git diff` 复核变更。
