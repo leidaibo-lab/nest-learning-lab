@@ -1,8 +1,31 @@
+import { Logger } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { ApplicationLifecycleService } from '../lifecycle/application-lifecycle.service';
 import { NotificationProcessor } from './notification.processor';
 
 describe('NotificationProcessor', () => {
+  const observations: Array<Record<string, unknown>> = [];
+  beforeEach(() => {
+    observations.length = 0;
+    jest
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation((message: unknown) => {
+        if (typeof message === 'string') {
+          observations.push(JSON.parse(message) as Record<string, unknown>);
+        }
+      });
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (reason: Error) => void;
+    const promise = new Promise<T>((finish, fail) => {
+      resolve = finish;
+      reject = fail;
+    });
+    return { promise, resolve, reject };
+  }
   type UpdateCall = [
     {
       where: Record<string, unknown>;
@@ -13,6 +36,7 @@ describe('NotificationProcessor', () => {
   function createProcessor(prismaOverrides: Record<string, unknown>) {
     const prisma = {
       notificationJob: {
+        count: jest.fn().mockResolvedValue(0),
         findFirst: jest.fn(),
         updateMany: jest.fn(),
       },
@@ -104,6 +128,13 @@ describe('NotificationProcessor', () => {
       (renewalUpdate.where.leaseUntil as { gt: unknown }).gt,
     ).toBeInstanceOf(Date);
     expect(renewalUpdate.data.leaseUntil).toBeInstanceOf(Date);
+    expect(observations).toContainEqual(
+      expect.objectContaining({
+        event: 'notification.attempt',
+        outcome: 'completed',
+        durationMs: expect.any(Number) as number,
+      }),
+    );
   });
 
   it('reclaims a processing job after its lease expires', async () => {
@@ -276,6 +307,160 @@ describe('NotificationProcessor', () => {
     expect(updateCalls[2][0].where.id).toBe('job-1');
     expect(updateCalls[2][0].where.status).toBe('processing');
     expect(updateCalls[2][0].where.leaseToken).toEqual(expect.any(String));
+    expect(observations).toContainEqual(
+      expect.objectContaining({
+        event: 'notification.attempt',
+        outcome: 'lease_lost',
+      }),
+    );
+  });
+
+  it('keeps processing when backlog sampling fails and records unknown backlog', async () => {
+    const { prisma, processor } = createProcessor({});
+    const client = prisma as unknown as {
+      notificationJob: { count: jest.Mock; findFirst: jest.Mock };
+    };
+    client.notificationJob.count.mockRejectedValue(new Error('采样失败'));
+    client.notificationJob.findFirst.mockResolvedValue(undefined);
+
+    await processor.processPending();
+
+    expect(client.notificationJob.findFirst).toHaveBeenCalledTimes(1);
+    expect(observations).toContainEqual(
+      expect.objectContaining({
+        event: 'notification.batch',
+        backlog: null,
+        outcome: 'finished',
+      }),
+    );
+  });
+
+  it.each(['slow', 'failure'] as const)(
+    'handles a %s renewal heartbeat during a long task and drains all queries',
+    async (scenario) => {
+      jest.useFakeTimers();
+      const { prisma, processor } = createProcessor({});
+      const client = prisma as unknown as {
+        notificationJob: { findFirst: jest.Mock; updateMany: jest.Mock };
+        taskEvent: { findUnique: jest.Mock };
+        projectMember: { findMany: jest.Mock };
+        notification: { createMany: jest.Mock };
+      };
+      const event = deferred<object>();
+      const eventStarted = deferred<void>();
+      const heartbeat = deferred<{ count: number }>();
+      const terminalWritten = deferred<void>();
+      client.notificationJob.findFirst
+        .mockResolvedValueOnce({
+          id: 'job-1',
+          eventId: 'event-1',
+          attempts: 0,
+          tenantId: 'tenant-1',
+        })
+        .mockResolvedValue(undefined);
+      client.taskEvent.findUnique.mockImplementation(() => {
+        eventStarted.resolve();
+        return event.promise;
+      });
+      client.projectMember.findMany.mockResolvedValue([]);
+      client.notificationJob.updateMany.mockImplementation(
+        (args: { data: { status?: string } }) => {
+          if (args.data.status === 'completed') {
+            terminalWritten.resolve();
+          }
+          return Promise.resolve({ count: 1 });
+        },
+      );
+      // 认领先完成，第二个更新是 10 秒时触发的周期心跳。
+      client.notificationJob.updateMany
+        .mockResolvedValueOnce({ count: 1 })
+        .mockImplementationOnce(() => heartbeat.promise);
+      let drain: Promise<void> | undefined;
+      try {
+        processor.schedule();
+        await jest.advanceTimersByTimeAsync(0);
+        await eventStarted.promise;
+        await jest.advanceTimersByTimeAsync(10_000);
+        expect(client.notificationJob.updateMany).toHaveBeenCalledTimes(2);
+        if (scenario === 'slow') {
+          // 续租未结束时跨过两个周期，也不允许堆积新的周期查询。
+          await jest.advanceTimersByTimeAsync(20_000);
+          expect(client.notificationJob.updateMany).toHaveBeenCalledTimes(2);
+        } else {
+          heartbeat.reject(new Error('单次心跳数据库故障'));
+          await jest.advanceTimersByTimeAsync(0);
+        }
+        drain = processor.onModuleDestroy();
+        event.resolve({
+          id: 'event-1',
+          taskId: 'task-1',
+          tenantId: 'tenant-1',
+          fromStatus: 'todo',
+          toStatus: 'done',
+          version: 2,
+          task: { projectId: 'project-1' },
+        });
+        await terminalWritten.promise;
+        if (scenario === 'slow') {
+          // 终态已写入也不能提前释放连接：周期心跳仍是一条真实的在途数据库查询。
+          expect(
+            observations.some((entry) => entry.event === 'notification.drain'),
+          ).toBe(false);
+          heartbeat.resolve({ count: 0 });
+        }
+        await drain;
+        expect(client.notification.createMany).toHaveBeenCalledTimes(1);
+        expect(observations).toContainEqual(
+          expect.objectContaining({
+            event: 'notification.attempt',
+            outcome: 'completed',
+          }),
+        );
+        expect(client.notificationJob.findFirst).toHaveBeenCalledTimes(1);
+        expect(jest.getTimerCount()).toBe(0);
+      } finally {
+        heartbeat.resolve({ count: 0 });
+        event.resolve({});
+        await drain;
+        await processor.onModuleDestroy();
+        jest.clearAllTimers();
+        jest.useRealTimers();
+      }
+    },
+  );
+
+  it('records backlog and waits for an active scan before finishing drain', async () => {
+    const { prisma, processor } = createProcessor({});
+    const client = prisma as unknown as {
+      notificationJob: { count: jest.Mock; findFirst: jest.Mock };
+    };
+    client.notificationJob.count.mockResolvedValue(12);
+    let finishScan!: () => void;
+    const scanStarted = new Promise<void>((resolve) => {
+      client.notificationJob.findFirst.mockImplementation(() => {
+        resolve();
+        return new Promise<undefined>((finish) => {
+          finishScan = () => finish(undefined);
+        });
+      });
+    });
+    processor.schedule();
+    await scanStarted;
+    const drain = processor.onModuleDestroy();
+    expect(
+      observations.some((entry) => entry.event === 'notification.drain'),
+    ).toBe(false);
+    finishScan();
+    await drain;
+    expect(observations).toContainEqual(
+      expect.objectContaining({ event: 'notification.batch', backlog: 12 }),
+    );
+    expect(observations).toContainEqual(
+      expect.objectContaining({
+        event: 'notification.drain',
+        durationMs: expect.any(Number) as number,
+      }),
+    );
   });
 
   it('yields after one bounded batch and schedules the next batch', async () => {
@@ -340,5 +525,60 @@ describe('NotificationProcessor', () => {
     await processor.processPending();
 
     expect(client.notificationJob.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('retries a failed database scan after a delay and recovers', async () => {
+    jest.useFakeTimers();
+    const { prisma, processor } = createProcessor({});
+    const client = prisma as unknown as {
+      notificationJob: { findFirst: jest.Mock };
+    };
+    const scan = client.notificationJob.findFirst;
+    scan
+      .mockRejectedValueOnce(new Error('数据库暂时不可用'))
+      .mockResolvedValue(undefined);
+
+    try {
+      processor.schedule();
+      await jest.advanceTimersByTimeAsync(0);
+      expect(scan).toHaveBeenCalledTimes(1);
+
+      // 依赖故障不能触发立即重试的忙循环；时间由 fake timers 控制，不依赖机器速度。
+      await jest.advanceTimersByTimeAsync(999);
+      expect(scan).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(2);
+      expect(scan).toHaveBeenCalledTimes(2);
+      expect(jest.getTimerCount()).toBe(0);
+    } finally {
+      await processor.onModuleDestroy();
+      jest.clearAllTimers();
+      jest.useRealTimers();
+    }
+  });
+
+  it('stops a pending database retry when the instance starts draining', async () => {
+    jest.useFakeTimers();
+    const { prisma } = createProcessor({});
+    const lifecycle = new ApplicationLifecycleService();
+    const processor = new NotificationProcessor(prisma, lifecycle);
+    const client = prisma as unknown as {
+      notificationJob: { findFirst: jest.Mock };
+    };
+    const scan = client.notificationJob.findFirst;
+    scan.mockRejectedValueOnce(new Error('数据库暂时不可用'));
+
+    try {
+      processor.schedule();
+      await jest.advanceTimersByTimeAsync(0);
+      lifecycle.beforeApplicationShutdown('SIGTERM');
+      // 即使故障恢复定时器已经登记，排空也必须优先于下一次任务认领。
+      await jest.advanceTimersByTimeAsync(1_001);
+      expect(scan).toHaveBeenCalledTimes(1);
+      expect(jest.getTimerCount()).toBe(0);
+    } finally {
+      await processor.onModuleDestroy();
+      jest.clearAllTimers();
+      jest.useRealTimers();
+    }
   });
 });

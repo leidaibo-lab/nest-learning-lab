@@ -53,9 +53,11 @@ curl -i -H 'x-request-id: local-debug-001' http://localhost:3000/health
 
 ## 当前边界
 
-当前已有请求日志、健康状态、接口契约和后台处理日志。通知背压通过批次上限、`setImmediate` 和测试观察，尚未暴露 backlog、处理耗时或数据库压力指标。项目也尚未接入 Prometheus 指标、分布式 Trace 或独立日志查询服务。
+当前已有请求日志、健康状态、接口契约和后台处理日志。通知背压通过批次上限、`setImmediate` 和测试观察；容量日志提供未完成 backlog、单次尝试结果/耗时、批次耗时和排空等待耗时。数据库查询延迟、连接池使用量、Prometheus 指标、分布式 Trace 和独立日志查询服务尚未接入。
 
 停机排空由 `ApplicationLifecycleService` 维护进程内状态：`draining` 只表示当前实例不再接收新流量，不表示数据库或其他实例整体不可用。终止宽限期仍由部署系统配置，并需要依据通知处理耗时和故障演练校准。
+
+本阶段的[容量基线与故障演练记录](../knowledge/notification-capacity-fault-drill.md)说明 notification.batch、notification.attempt 和 notification.drain 日志的测量边界，并用确定性测试验证观测失败不中断处理和排空等待活动循环。真实负载下的耗时分位数和数据库压力测量仍待补充。本地演练结果不能直接推出生产 SLO。
 
 ## 实现入口
 

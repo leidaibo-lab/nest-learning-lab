@@ -19,7 +19,10 @@ const LEASE_RENEW_INTERVAL_MS = 10_000;
 const PROCESSOR_ERROR_RETRY_DELAY_MS = 1_000;
 // 单次只处理有限任务后主动让出事件循环，避免 backlog 下一个 Provider 无限 drain。
 // 这是应用内的协作式背压，不代表队列容量；批次大小仍需通过压测和数据库压力重新校准。
+// 下一阶段会用 backlog、处理耗时、数据库压力和停机延迟校准该值；本地演练结果不能直接推出生产吞吐或 SLO。
 const MAX_JOBS_PER_RUN = 50;
+type AttemptOutcome =
+  'completed' | 'pending' | 'failed' | 'lease_lost' | 'error';
 
 @Injectable()
 export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
@@ -40,12 +43,18 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
+    const startedAt = performance.now();
     this.closed = true;
     if (this.retryTimer) {
       clearTimeout(this.retryTimer);
     }
     // 等待正在执行的数据库操作结束；后台循环错误已记录并安排重试，不应阻断 Prisma 释放连接。
     await this.activeRun?.catch(() => undefined);
+    // 只测量本 Provider 等待当前循环的时间，不等于信号到进程退出的总时长。
+    this.logObservation({
+      event: 'notification.drain',
+      durationMs: performance.now() - startedAt,
+    });
   }
 
   schedule(): void {
@@ -80,9 +89,20 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
     }
 
     this.processing = true;
+    const startedAt = performance.now();
     let processedJobs = 0;
     let needsContinuation = false;
+    let backlog: number | null = null;
+    let outcome: 'finished' | 'error' = 'error';
     try {
+      try {
+        // 非事务快照包含退避等待和活跃租约；它不是可立即认领数，也不能直接代表生产容量。
+        backlog = await this.prisma.notificationJob.count({
+          where: { status: { in: ['pending', 'processing'] } },
+        });
+      } catch {
+        // 观测查询失败不能阻断业务；未知用 null 表示，避免把故障误记成零积压。
+      }
       while (
         !this.isDraining() &&
         !this.closed &&
@@ -90,6 +110,7 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
       ) {
         const job = await this.claimNextJob();
         if (!job) {
+          outcome = 'finished';
           return;
         }
 
@@ -100,8 +121,16 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
         !this.isDraining() &&
         !this.closed &&
         processedJobs === MAX_JOBS_PER_RUN;
+      outcome = 'finished';
     } finally {
       this.processing = false;
+      this.logObservation({
+        event: 'notification.batch',
+        backlog,
+        processedJobs,
+        outcome,
+        durationMs: performance.now() - startedAt,
+      });
       if (needsContinuation) {
         // 下一批通过 setImmediate 排队，给 HTTP 请求和关闭信号留下调度机会。
         this.schedule();
@@ -111,6 +140,12 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
 
   private isDraining(): boolean {
     return this.lifecycle?.isDraining() ?? false;
+  }
+
+  private logObservation(
+    observation: Record<string, string | number | null>,
+  ): void {
+    this.logger.log(JSON.stringify(observation));
   }
 
   private scheduleProcessorRetry(): void {
@@ -171,12 +206,25 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
     tenantId: string;
     leaseToken: string;
   }) {
+    // 单调时钟不受系统时间校准影响；输出原始样本，按明确窗口在进程外计算分位数。
+    const startedAt = performance.now();
+    let outcome: AttemptOutcome = 'error';
+    let activeRenewal: Promise<void> | undefined;
     // 心跳只延长仍属于本次尝试的租约；令牌变化时，旧实例不能继续续租。
     const renewalTimer = setInterval(() => {
-      void this.renewLease(job).catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : '未知错误';
-        this.logger.warn(`通知任务 ${job.id} 租约续期失败: ${message}`);
-      });
+      // setInterval 不等待异步回调；数据库变慢时跳过下一周期，避免周期续租堆积。
+      if (activeRenewal) {
+        return;
+      }
+      activeRenewal = this.renewLease(job)
+        .then(() => undefined)
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : '未知错误';
+          this.logger.warn(`通知任务 ${job.id} 租约续期失败: ${message}`);
+        })
+        .finally(() => {
+          activeRenewal = undefined;
+        });
     }, LEASE_RENEW_INTERVAL_MS);
 
     try {
@@ -233,14 +281,28 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
         },
       });
       if (completed.count !== 1) {
+        outcome = 'lease_lost';
         this.logger.warn(
           `通知任务 ${job.id} 已失去租约，忽略过期实例的完成结果`,
         );
+      } else {
+        outcome = 'completed';
       }
     } catch (error) {
-      await this.recordFailure(job, error);
+      outcome = await this.recordFailure(job, error);
     } finally {
       clearInterval(renewalTimer);
+      // 清除定时器不会取消已发出的数据库查询，必须等它收尾后才允许排空继续释放连接。
+      // 若查询永久不返回，仍需数据库超时或部署强制终止；这里不伪装查询已取消。
+      await activeRenewal;
+      // completed 由围栏更新确认；不能把通知写入或函数返回直接当作当前尝试成功。
+      this.logObservation({
+        event: 'notification.attempt',
+        jobId: job.id,
+        attempts: job.attempts,
+        outcome,
+        durationMs: performance.now() - startedAt,
+      });
     }
   }
 
@@ -266,7 +328,7 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
   private async recordFailure(
     job: { id: string; attempts: number; leaseToken: string },
     error: unknown,
-  ): Promise<void> {
+  ): Promise<AttemptOutcome> {
     const message = error instanceof Error ? error.message : '未知通知处理错误';
     const exhausted = job.attempts >= MAX_ATTEMPTS;
     const delay = RETRY_DELAYS_MS[job.attempts - 1] ?? RETRY_DELAYS_MS.at(-1)!;
@@ -289,7 +351,7 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
     });
     if (failed.count !== 1) {
       this.logger.warn(`通知任务 ${job.id} 已失去租约，忽略过期实例的失败结果`);
-      return;
+      return 'lease_lost';
     }
     if (!exhausted && !this.closed) {
       // 只有可重试任务才设置下一次唤醒，避免失败任务形成无间隔的忙循环。
@@ -301,5 +363,6 @@ export class NotificationProcessor implements OnModuleInit, OnModuleDestroy {
     this.logger.error(
       `通知任务 ${job.id} 第 ${job.attempts} 次处理失败: ${message}`,
     );
+    return exhausted ? 'failed' : 'pending';
   }
 }
